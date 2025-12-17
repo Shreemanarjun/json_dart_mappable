@@ -22,6 +22,7 @@ class Footer extends StatelessComponent {
             ]),
             div(classes: 'flex space-x-6', [
               _socialLink('GitHub', 'https://github.com/schultek/dart_mappable'),
+              _socialLink('Portfolio', 'https://shreeman.dev'),
               _socialLink('Documentation', 'https://pub.dev/packages/dart_mappable'),
             ]),
           ]),
@@ -29,11 +30,14 @@ class Footer extends StatelessComponent {
 
         const div(classes: 'border-t border-slate-100 pt-8 flex flex-col md:flex-row justify-between items-center', [
           p(classes: 'text-slate-400 text-sm font-medium mb-4 md:mb-0', [
-            .text('MIT License © 2025 Shreeman Arjun Sahu'),
+            .text('MIT License © 2025 '),
+            a(href: 'https://shreeman.dev', classes: 'text-slate-600 hover:text-blue-600 transition-colors', [.text('Shreeman Arjun Sahu')]),
           ]),
           p(classes: 'text-slate-400 text-sm font-medium', [
-            .text('Made with ❤️ and Jaspr'),
+            .text('Made with ❤️ and '),
+            a(href: 'https://jaspr.site/', classes: 'text-slate-600 hover:text-blue-600 transition-colors', [.text('Jaspr')]),
           ]),
+          JasprBadge.lightTwoTone(),
         ]),
       ]),
     ]);
@@ -42,7 +46,7 @@ class Footer extends StatelessComponent {
   Component _socialLink(String label, String url) {
     return a(href: url, classes: 'text-sm font-bold text-slate-500 hover:text-blue-600 transition-colors flex items-center gap-2', [
       .text(label),
-      span(classes: 'text-[10px]', [.text('↗')]),
+      const span(classes: 'text-[10px]', [.text('↗')]),
     ]);
   }
 }
