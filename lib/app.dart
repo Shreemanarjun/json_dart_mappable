@@ -3,6 +3,7 @@ import 'package:jaspr/jaspr.dart';
 import 'package:jaspr_router/jaspr_router.dart';
 
 import 'components/header.dart';
+import 'components/footer.dart';
 import 'pages/home.dart';
 import 'pages/converter.dart';
 
@@ -20,10 +21,13 @@ class App extends StatelessComponent {
     // Renders a <div class="main"> html element with children.
     return div(classes: 'main', [
       const Header(),
-      Router(routes: [
-        Route(path: '/', title: 'Home', builder: (context, state) => const Home()),
-        Route(path: '/converter', title: 'Converter', builder: (context, state) => const Converter()),
-      ]),
+      Router(
+        routes: [
+          Route(path: '/', title: 'Home', builder: (context, state) => const Home()),
+          Route(path: '/converter', title: 'Converter', builder: (context, state) => const Converter()),
+        ],
+      ),
+      const Footer(),
     ]);
   }
 

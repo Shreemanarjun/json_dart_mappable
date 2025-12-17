@@ -162,11 +162,13 @@ class JsonToDartConverter {
           if (!item.containsKey(key)) {
             // Field is missing - should be nullable
             shouldBeNullable = true;
+            break;
           } else {
             final value = item[key];
             if (value == null) {
               // Field is null - should be nullable
               shouldBeNullable = true;
+              break;
             }
           }
         }
@@ -208,18 +210,32 @@ class JsonToDartConverter {
     buffer.writeln();
 
     if (json is Map<String, dynamic>) {
-      _generateClassFromMap(buffer, json, className, nullabilityAnalysis, nullabilityMode, alwaysIncludeMappableField,
+      _generateClassFromMap(
+        buffer,
+        json,
+        className,
+        nullabilityAnalysis,
+        nullabilityMode,
+        alwaysIncludeMappableField,
         useObjectInsteadOfDynamic: useObjectInsteadOfDynamic,
         includeDefaultMethods: includeDefaultMethods,
         useRequiredConstructor: useRequiredConstructor,
-        isRootClass: true);
+        isRootClass: true,
+      );
     } else if (json is List) {
       if (json.isNotEmpty) {
-        _generateClassFromList(buffer, json, className, nullabilityAnalysis, nullabilityMode, alwaysIncludeMappableField,
+        _generateClassFromList(
+          buffer,
+          json,
+          className,
+          nullabilityAnalysis,
+          nullabilityMode,
+          alwaysIncludeMappableField,
           useObjectInsteadOfDynamic: useObjectInsteadOfDynamic,
           includeDefaultMethods: includeDefaultMethods,
           useRequiredConstructor: useRequiredConstructor,
-          isRootClass: true);
+          isRootClass: true,
+        );
       } else {
         buffer.writeln('@MappableClass()');
         buffer.writeln('class $className with ${className}Mappable {');
@@ -260,11 +276,18 @@ class JsonToDartConverter {
         if (!nestedClasses.contains(nestedClassName)) {
           nestedClasses.add(nestedClassName);
           final nestedBuffer = StringBuffer();
-          _generateClassFromMap(nestedBuffer, value, nestedClassName, nullabilityAnalysis, nullabilityMode, alwaysIncludeMappableField,
+          _generateClassFromMap(
+            nestedBuffer,
+            value,
+            nestedClassName,
+            nullabilityAnalysis,
+            nullabilityMode,
+            alwaysIncludeMappableField,
             useObjectInsteadOfDynamic: useObjectInsteadOfDynamic,
             includeDefaultMethods: includeDefaultMethods,
             useRequiredConstructor: useRequiredConstructor,
-            isRootClass: false);
+            isRootClass: false,
+          );
           nestedClassBuffers.add(nestedBuffer);
         }
         fieldTypeOverrides[key] = nestedClassName;
@@ -301,11 +324,18 @@ class JsonToDartConverter {
             }
           }
 
-          _generateClassFromMap(nestedBuffer, mergedFields, nestedClassName, filteredAnalysis, nullabilityMode, alwaysIncludeMappableField,
+          _generateClassFromMap(
+            nestedBuffer,
+            mergedFields,
+            nestedClassName,
+            filteredAnalysis,
+            nullabilityMode,
+            alwaysIncludeMappableField,
             useObjectInsteadOfDynamic: useObjectInsteadOfDynamic,
             includeDefaultMethods: includeDefaultMethods,
             useRequiredConstructor: useRequiredConstructor,
-            isRootClass: false);
+            isRootClass: false,
+          );
           nestedClassBuffers.add(nestedBuffer);
         }
         fieldTypeOverrides[key] = 'List<$nestedClassName>';
@@ -321,7 +351,7 @@ class JsonToDartConverter {
 
     map.forEach((key, value) {
       final fieldName = _sanitizeFieldName(key);
-      final fieldType = fieldTypeOverrides[key] ?? _getDartType(value, fieldName, nullabilityAnalysis, nullabilityMode, useObjectInsteadOfDynamic);
+      final fieldType = fieldTypeOverrides[key] ?? _getDartType(value, key, nullabilityAnalysis, nullabilityMode, useObjectInsteadOfDynamic);
 
       if (alwaysIncludeMappableField || fieldName != key) {
         fields.add('  @MappableField(key: \'$key\')');
@@ -337,12 +367,13 @@ class JsonToDartConverter {
 
     if (useRequiredConstructor) {
       buffer.writeln('  const $className({');
+      buffer.writeln(constructorParams.join('\n'));
+      buffer.writeln('  });');
     } else {
       buffer.writeln('  const $className(');
+      buffer.writeln(constructorParams.join('\n'));
+      buffer.writeln('  );');
     }
-
-    buffer.writeln(constructorParams.join('\n'));
-    buffer.writeln('  );');
     buffer.writeln();
 
     fields.forEach(buffer.writeln);
@@ -391,8 +422,6 @@ class JsonToDartConverter {
         }
       }
 
-
-
       if (mergedFields.isNotEmpty) {
         // For array item classes, we need to filter the nullability analysis
         // The className here is like "ResponseItem", but we need to find the field name
@@ -403,11 +432,18 @@ class JsonToDartConverter {
         // But for nested arrays, we need the field name. For now, let's assume the
         // nullability analysis already has the correct paths for the array items.
 
-        _generateClassFromMap(buffer, mergedFields, itemClassName, nullabilityAnalysis, nullabilityMode, alwaysIncludeMappableField,
+        _generateClassFromMap(
+          buffer,
+          mergedFields,
+          itemClassName,
+          nullabilityAnalysis,
+          nullabilityMode,
+          alwaysIncludeMappableField,
           useObjectInsteadOfDynamic: useObjectInsteadOfDynamic,
           includeDefaultMethods: includeDefaultMethods,
           useRequiredConstructor: useRequiredConstructor,
-          isRootClass: false);
+          isRootClass: false,
+        );
         buffer.writeln();
       }
     }
@@ -452,11 +488,12 @@ class JsonToDartConverter {
 
   static String _getDartType(
     dynamic value,
-    String fieldName,
+    String originalKey,
     Map<String, bool>? nullabilityAnalysis,
     String nullabilityMode,
     bool useObjectInsteadOfDynamic,
   ) {
+    final fieldName = _sanitizeFieldName(originalKey);
     String baseType;
     if (value == null) {
       baseType = useObjectInsteadOfDynamic ? 'Object' : 'dynamic';
@@ -472,7 +509,9 @@ class JsonToDartConverter {
       if (value.isEmpty) {
         baseType = 'List<${useObjectInsteadOfDynamic ? 'Object' : 'dynamic'}>';
       } else {
-        final itemType = _getDartType(value.first, fieldName, nullabilityAnalysis, nullabilityMode, useObjectInsteadOfDynamic);
+        // Find first non-null item to determine type
+        final firstNonNull = value.firstWhere((item) => item != null, orElse: () => null);
+        final itemType = _getDartType(firstNonNull, originalKey, nullabilityAnalysis, nullabilityMode, useObjectInsteadOfDynamic);
         baseType = 'List<$itemType>';
       }
     } else if (value is Map<String, dynamic>) {
@@ -488,7 +527,7 @@ class JsonToDartConverter {
         return baseType == 'dynamic' || baseType == 'Object' ? baseType : '$baseType?';
       case 'smart':
         // For smart mode, check if this field should be nullable based on analysis
-        if (nullabilityAnalysis != null && nullabilityAnalysis[fieldName] == true) {
+        if (nullabilityAnalysis != null && nullabilityAnalysis[originalKey] == true) {
           return baseType == 'dynamic' || baseType == 'Object' ? baseType : '$baseType?';
         }
         return baseType;

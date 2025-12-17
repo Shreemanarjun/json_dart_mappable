@@ -182,5 +182,42 @@ void main() {
       expect(result.code, contains('final String title;'));
       expect(result.code, contains('final int? likes;')); // Nullable due to null value
     });
+
+    test('handles user reported scenario - inconsistent array items', () {
+      const jsonString = '{"Data":[{"age":""},{"name":""}]}';
+      final result = JsonToDartConverter.convertJsonToDart(
+        jsonString,
+        'MyModel',
+        'smart',
+        includeDefaultMethods: true,
+        useRequiredConstructor: true,
+        alwaysIncludeMappableField: true,
+      );
+
+      expect(result.isSuccess, true);
+      expect(result.code, contains('class MyModel with MyModelMappable'));
+      expect(result.code, contains('final List<DataItem> data;'));
+      expect(result.code, contains('class DataItem with DataItemMappable'));
+      expect(result.code, contains('final String? age;')); // Reverted: nullable
+      expect(result.code, contains('final String? name;')); // Reverted: nullable
+      expect(result.code, contains('factory MyModel.fromMap'));
+      expect(result.code, contains('});')); // Check for fixed constructor syntax
+    });
+
+    test('smart nullability works with sanitized keys', () {
+      const jsonString = '{"user_data": [{"user_id": "1"}, {"other": "2"}]}';
+      final result = JsonToDartConverter.convertJsonToDart(jsonString, 'MyModel', 'smart');
+
+      expect(result.isSuccess, true);
+      expect(result.code, contains('final String? userId;')); // Fixed: used to be non-nullable
+    });
+
+    test('smart nullability triggers on explicit null', () {
+      const jsonString = '{"user_data": [{"user_id": "1"}, {"user_id": null}]}';
+      final result = JsonToDartConverter.convertJsonToDart(jsonString, 'MyModel', 'smart');
+
+      expect(result.isSuccess, true);
+      expect(result.code, contains('final String? userId;')); // Nullable because of explicit null
+    });
   });
 }

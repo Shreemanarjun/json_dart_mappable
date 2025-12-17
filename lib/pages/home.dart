@@ -28,133 +28,194 @@ class Home extends StatelessComponent {
       Future.delayed(const Duration(milliseconds: 10), _runHighlight);
     }
 
-    return const div(classes: 'flex-1 bg-gradient-to-br from-blue-50 via-white to-purple-50', [
-      // Hero Section
-      section(classes: 'py-20 px-4', [
-        div(classes: 'max-w-6xl mx-auto text-center', [
-          // Main Hero Content
-          div(classes: 'mb-16', [
-            div(classes: 'inline-flex items-center justify-center w-20 h-20 bg-gradient-to-r from-blue-600 to-purple-600 rounded-full mb-8 shadow-xl', [
-              span(classes: 'text-3xl text-white font-bold', [.text('{}')]),
+    return div(classes: 'relative min-h-screen overflow-hidden bg-slate-50', [
+      // Decorative Background Elements
+      const div(classes: 'absolute top-0 left-1/2 -translate-x-1/2 w-full h-full overflow-hidden pointer-events-none z-0', [
+        div(classes: 'absolute -top-[10%] -left-[10%] w-[40%] h-[40%] bg-blue-400/20 rounded-full blur-[120px] animate-pulse', []),
+        div(classes: 'absolute top-[20%] -right-[10%] w-[35%] h-[35%] bg-purple-400/20 rounded-full blur-[120px]', []),
+        div(classes: 'absolute bottom-[10%] left-[20%] w-[30%] h-[30%] bg-indigo-400/10 rounded-full blur-[100px]', []),
+      ]),
+
+      // Main Content
+      div(classes: 'relative z-10', [
+        // Hero Section
+        section(classes: 'pt-24 pb-20 px-4', [
+          div(classes: 'max-w-[1400px] mx-auto', [
+            const div(classes: 'flex flex-col items-center text-center mb-20', [
+              // New Badge
+              div(classes: 'inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 border border-blue-100 mb-8 animate-bounce', [
+                span(classes: 'w-2 h-2 rounded-full bg-blue-600', []),
+                span(classes: 'text-xs font-bold text-blue-700 uppercase tracking-wider', [.text('Powered by Dart Mappable')]),
+              ]),
+
+              h1(classes: 'text-5xl md:text-7xl font-black text-slate-900 mb-8 leading-[1.1] tracking-tight', [
+                .text('Convert JSON to '),
+                span(classes: 'bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent', [.text('Type-Safe')]),
+                .text(' Dart'),
+              ]),
+
+              p(classes: 'text-lg md:text-xl text-slate-600 max-w-2xl mx-auto leading-relaxed mb-10 font-medium', [
+                .text('The most advanced code generator for Dart. Instant conversion, smart nullability, and beautiful formatting for your production-ready models.'),
+              ]),
+
+              div(classes: 'flex flex-col sm:flex-row gap-4 items-center', [
+                Link(
+                  to: '/converter',
+                  classes: 'group relative px-8 py-4 bg-slate-900 text-white rounded-2xl font-bold text-lg shadow-2xl hover:bg-slate-800 transition-all duration-300 flex items-center gap-3 overflow-hidden',
+                  child: div(classes: 'flex items-center gap-3 relative z-10', [
+                    span([.text('Get Started Free')]),
+                    span(classes: 'group-hover:translate-x-1 transition-transform', [.text('→')]),
+                  ]),
+                ),
+                a(
+                  href: 'https://pub.dev/packages/dart_mappable',
+                  classes: 'px-8 py-4 bg-white text-slate-700 border border-slate-200 rounded-2xl font-bold text-lg hover:bg-slate-50 transition-all duration-200',
+                  [.text('View on Pub.dev')],
+                ),
+              ]),
             ]),
-            h1(classes: 'text-6xl font-bold bg-gradient-to-r from-blue-600 via-purple-600 to-blue-800 bg-clip-text text-transparent mb-6 leading-tight', [
-              .text('Transform JSON into\nType-Safe Dart Classes'),
-            ]),
-            p(classes: 'text-xl text-gray-600 max-w-3xl mx-auto leading-relaxed mb-8', [
-              .text('Generate production-ready Dart models with Dart Mappable. Format, validate, and convert your JSON data into beautiful, type-safe code instantly with our powerful online converter.'),
-            ]),
-            div(classes: 'flex flex-col sm:flex-row gap-4 justify-center items-center', [
-              Link(
-                to: '/converter',
-                classes: 'px-8 py-4 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl font-semibold text-lg shadow-lg hover:shadow-xl transform hover:-translate-y-1 transition-all duration-200 flex items-center gap-3',
-                child: div(classes: 'flex items-center gap-3', [
-                  span([.text('🚀 Start Converting')]),
-                  span(classes: 'text-sm opacity-90', [.text('Free')]),
+
+            // Bento Grid Features
+            const div(classes: 'grid grid-cols-1 md:grid-cols-12 gap-6 mb-24', [
+              // Large Card
+              div(classes: 'md:col-span-8 bg-white rounded-3xl p-8 shadow-sm border border-slate-200/60 flex flex-col md:flex-row gap-8 items-center overflow-hidden group hover:shadow-xl hover:shadow-blue-500/5 transition-all duration-500', [
+                div(classes: 'flex-1', [
+                  div(classes: 'w-12 h-12 bg-blue-100 rounded-2xl flex items-center justify-center mb-6 text-2xl', [.text('💎')]),
+                  h3(classes: 'text-2xl font-bold text-slate-900 mb-4', [.text('Dart Mappable Power')]),
+                  p(classes: 'text-slate-600 leading-relaxed mb-6', [
+                    .text('Leverage the full power of dart_mappable with advanced features like polymorphic classes, custom mappers, and deep copies.'),
+                  ]),
+                  div(classes: 'flex gap-3', [
+                    span(classes: 'px-3 py-1 bg-blue-50 text-blue-700 rounded-lg text-xs font-bold', [.text('V4.2.2')]),
+                    span(classes: 'px-3 py-1 bg-indigo-50 text-indigo-700 rounded-lg text-xs font-bold', [.text('Polymorphism')]),
+                  ]),
                 ]),
-              ),
-              div(classes: 'text-sm text-gray-500 flex items-center gap-2', [
-                span(classes: 'w-2 h-2 bg-green-500 rounded-full animate-pulse', []),
-                span([.text('No signup required • Works offline')]),
-              ]),
-            ]),
-          ]),
-
-          // Feature Grid
-          div(classes: 'grid grid-cols-1 md:grid-cols-3 gap-8 mb-16', [
-            // Feature 1
-            div(classes: 'bg-white p-8 rounded-2xl shadow-lg border border-gray-100 hover:shadow-xl transition-shadow duration-300', [
-              div(classes: 'w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center mb-4', [
-                span(classes: 'text-2xl', [.text('✨')]),
-              ]),
-              h3(classes: 'text-xl font-bold text-gray-800 mb-3', [.text('JSON Formatting')]),
-              p(classes: 'text-gray-600 leading-relaxed', [.text('Format and minify your JSON with one click. Clean, readable output with proper indentation and syntax highlighting.')]),
-            ]),
-
-            // Feature 2
-            div(classes: 'bg-white p-8 rounded-2xl shadow-lg border border-gray-100 hover:shadow-xl transition-shadow duration-300', [
-              div(classes: 'w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center mb-4', [
-                span(classes: 'text-2xl', [.text('🎯')]),
-              ]),
-              h3(classes: 'text-xl font-bold text-gray-800 mb-3', [.text('Smart Nullability')]),
-              p(classes: 'text-gray-600 leading-relaxed', [.text('Intelligent nullability detection. Choose between none, all nullable, or smart detection based on your JSON structure.')]),
-            ]),
-
-            // Feature 3
-            div(classes: 'bg-white p-8 rounded-2xl shadow-lg border border-gray-100 hover:shadow-xl transition-shadow duration-300', [
-              div(classes: 'w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center mb-4', [
-                span(classes: 'text-2xl', [.text('⚡')]),
-              ]),
-              h3(classes: 'text-xl font-bold text-gray-800 mb-3', [.text('Real-time Generation')]),
-              p(classes: 'text-gray-600 leading-relaxed', [.text('See your Dart classes generated instantly as you type. Syntax highlighting and error detection in real-time.')]),
-            ]),
-          ]),
-
-          // Code Example
-          div(classes: 'bg-slate-900 rounded-2xl p-8 shadow-2xl border border-slate-700 overflow-hidden', [
-            div(classes: 'flex items-center justify-between mb-6', [
-              div(classes: 'flex items-center gap-3', [
-                div(classes: 'flex gap-1.5', [
-                  div(classes: 'w-3 h-3 rounded-full bg-red-500', []),
-                  div(classes: 'w-3 h-3 rounded-full bg-yellow-500', []),
-                  div(classes: 'w-3 h-3 rounded-full bg-green-500', []),
-                ]),
-                span(classes: 'text-slate-300 text-sm font-medium ml-2', [.text('Generated Dart Class')]),
-              ]),
-              div(classes: 'flex items-center gap-2', [
-                span(classes: 'text-xs text-slate-400 bg-slate-800 px-2 py-1 rounded-md font-medium', [.text('Dart Mappable v4.2.2')]),
-                span(classes: 'text-xs text-emerald-400 flex items-center gap-1', [
-                  span(classes: 'w-1.5 h-1.5 bg-emerald-400 rounded-full', []),
-                  .text('Ready'),
+                // Illustrative code snippet or visual
+                div(classes: 'w-full md:w-1/2 bg-slate-50 rounded-2xl p-4 border border-slate-100 rotate-2 group-hover:rotate-0 transition-transform duration-500', [
+                  div(classes: 'flex gap-1.5 mb-3', [
+                    div(classes: 'w-2 h-2 rounded-full bg-slate-300', []),
+                    div(classes: 'w-2 h-2 rounded-full bg-slate-300', []),
+                  ]),
+                  div(classes: 'space-y-2', [
+                    div(classes: 'h-2 w-3/4 bg-slate-200 rounded', []),
+                    div(classes: 'h-2 w-1/2 bg-slate-200 rounded', []),
+                    div(classes: 'h-2 w-2/3 bg-blue-200 rounded', []),
+                  ]),
                 ]),
               ]),
-            ]),
-            div(classes: 'bg-slate-800/50 rounded-lg p-4 border border-slate-700', [
-              div(classes: 'flex items-center gap-2 mb-3 text-slate-400 text-xs font-medium', [
-                span(classes: 'text-blue-400', [.text('//')]),
-                .text('🎯 Smart nullability detection'),
+
+              // Medium Card 1
+              div(classes: 'md:col-span-4 bg-gradient-to-br from-indigo-600 to-blue-700 rounded-3xl p-8 shadow-lg text-white group hover:scale-[1.02] transition-transform duration-500', [
+                div(classes: 'w-12 h-12 bg-white/20 backdrop-blur-md rounded-2xl flex items-center justify-center mb-6 text-2xl', [.text('⚡')]),
+                h3(classes: 'text-2xl font-bold mb-4', [.text('Fast. Really Fast.')]),
+                p(classes: 'text-indigo-100 leading-relaxed', [
+                  .text('Real-time generation means you see the results as you type. No waiting, just instant output.'),
+                ]),
               ]),
-              pre(classes: 'text-slate-100 text-sm leading-relaxed  font-mono', [
-                code(classes: 'language-dart', [
-                  .text("""
+
+              // Feature cards row
+              div(classes: 'md:col-span-4 bg-white rounded-3xl p-8 shadow-sm border border-slate-200/60 hover:shadow-lg transition-all', [
+                div(classes: 'w-12 h-12 bg-emerald-100 rounded-2xl flex items-center justify-center mb-6 text-2xl', [.text('🛡️')]),
+                h3(classes: 'text-xl font-bold text-slate-900 mb-3', [.text('Type-Safe')]),
+                p(classes: 'text-slate-600 leading-relaxed', [.text('Say goodbye to dynamic types. Get full auto-completion and compile-time safety.')]),
+              ]),
+
+              div(classes: 'md:col-span-4 bg-white rounded-3xl p-8 shadow-sm border border-slate-200/60 hover:shadow-lg transition-all', [
+                div(classes: 'w-12 h-12 bg-purple-100 rounded-2xl flex items-center justify-center mb-6 text-2xl', [.text('🎯')]),
+                h3(classes: 'text-xl font-bold text-slate-900 mb-3', [.text('Smart Nulls')]),
+                p(classes: 'text-slate-600 leading-relaxed', [.text('Automatically detects nullable fields by analyzing your JSON structure across multiple records.')]),
+              ]),
+
+              div(classes: 'md:col-span-4 bg-white rounded-3xl p-8 shadow-sm border border-slate-200/60 hover:shadow-lg transition-all', [
+                div(classes: 'w-12 h-12 bg-amber-100 rounded-2xl flex items-center justify-center mb-6 text-2xl', [.text('🛠️')]),
+                h3(classes: 'text-xl font-bold text-slate-900 mb-3', [.text('Format & Clean')]),
+                p(classes: 'text-slate-600 leading-relaxed', [.text('Built-in JSON formatter and minifier helps you clean up messy data before conversion.')]),
+              ]),
+            ]),
+
+            // Showcase Section (Interactive Preview)
+            div(classes: 'relative mt-24', [
+              const div(classes: 'absolute inset-0 bg-blue-600/5 blur-[100px] rounded-full', []),
+              div(classes: 'relative bg-slate-900 rounded-[2.5rem] shadow-2xl border border-slate-800 overflow-hidden', [
+                // Window Header
+                const div(classes: 'flex items-center justify-between px-6 py-4 bg-slate-800/50 border-b border-slate-700/50', [
+                  div(classes: 'flex gap-2', [
+                    div(classes: 'w-3 h-3 rounded-full bg-red-400/80', []),
+                    div(classes: 'w-3 h-3 rounded-full bg-amber-400/80', []),
+                    div(classes: 'w-3 h-3 rounded-full bg-emerald-400/80', []),
+                  ]),
+                  div(classes: 'text-slate-400 text-xs font-mono tracking-widest', [.text('GENERATED_CODE.DART')]),
+                  div(classes: 'w-12', []), // Spacer
+                ]),
+
+                // Code Content
+                div(classes: 'p-8 md:p-12 grid grid-cols-1 lg:grid-cols-2 gap-12', [
+                  div(classes: 'space-y-6', [
+                    const h2(classes: 'text-3xl font-bold text-white', [.text('Clean Code,')]),
+                    const h2(classes: 'text-3xl font-bold text-blue-400', [.text('Guaranteed.')]),
+                    const p(classes: 'text-slate-400 leading-relaxed text-lg', [
+                      .text('Our generator produces idiomatic Dart code that follows best practices. Fully compatible with Dart 3 and the latest mapping features.'),
+                    ]),
+                    ul(classes: 'space-y-4', [
+                      _checkItem('Zero-boilerplate required'),
+                      _checkItem('Customizable class names'),
+                      _checkItem('Polymorphic support'),
+                    ]),
+                  ]),
+
+                  const div(classes: 'bg-slate-800/40 rounded-2xl p-6 border border-slate-700/50 shadow-inner overflow-x-auto', [
+                    pre(classes: 'text-slate-100 text-sm leading-relaxed font-mono', [
+                      code(classes: 'language-dart', [
+                        .text("""
 @MappableClass()
 class User with UserMappable {
   const User({
+    required this.id,
     required this.name,
-    required this.email,
-    this.age,        // Nullable (detected from JSON)
-    this.profile,    // Nullable (missing in some records)
+    this.email,
+    @MappableField(key: 'user_meta')
+    this.meta,
   });
 
+  final String id;
   final String name;
-  final String email;
-  final int? age;
-  final Profile? profile;
-}
-
-
-"""),
+  final String? email;
+  final Map<String, dynamic>? meta;
+}"""),
+                      ]),
+                    ]),
+                  ]),
                 ]),
               ]),
             ]),
-          ]),
 
-          // CTA Section
-          div(classes: 'mt-16 pt-16 border-t border-gray-200', [
-            div(classes: 'bg-gradient-to-r from-blue-600 to-purple-600 rounded-2xl p-8 text-white', [
-              h2(classes: 'text-3xl font-bold mb-4', [.text('Ready to Convert Your JSON?')]),
-              p(classes: 'text-blue-100 mb-6 text-lg', [.text('Join thousands of developers who trust our converter for their Dart projects.')]),
+            // CTA Bottom
+            const div(classes: 'mt-32 text-center pb-20', [
+              h2(classes: 'text-4xl font-bold text-slate-900 mb-6', [.text('Start generating today')]),
+              p(classes: 'text-lg text-slate-600 mb-10 max-w-xl mx-auto', [
+                .text('Join the growing community of Dart developers using modern tools to build faster.'),
+              ]),
               Link(
                 to: '/converter',
-                classes: 'inline-flex items-center px-6 py-3 bg-white text-blue-600 rounded-lg font-semibold hover:bg-gray-50 transition-colors duration-200',
-                child: div(classes: 'flex items-center gap-2', [
-                  span([.text('Get Started')]),
-                  span([.text('→')]),
+                classes: 'inline-flex items-center px-10 py-5 bg-blue-600 text-white rounded-2xl font-bold text-xl shadow-xl hover:bg-blue-700 hover:shadow-blue-500/20 transition-all duration-300 gap-3',
+                child: div(classes: 'flex items-center gap-3', [
+                  span([.text('Go to Converter')]),
+                  span([.text('⚡')]),
                 ]),
               ),
             ]),
           ]),
         ]),
       ]),
+    ]);
+  }
+
+  Component _checkItem(String text) {
+    return li(classes: 'flex items-center gap-3 text-slate-300', [
+      const div(classes: 'flex-shrink-0 w-5 h-5 bg-blue-500/20 rounded-full flex items-center justify-center', [
+        span(classes: 'text-blue-400 text-xs', [.text('✓')]),
+      ]),
+      span([.text(text)]),
     ]);
   }
 
