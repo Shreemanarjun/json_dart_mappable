@@ -5,7 +5,6 @@
 // Generated with jaspr_builder
 
 import 'package:jaspr/server.dart';
-import 'package:json_dart_mappable/components/header.dart' as _header;
 import 'package:json_dart_mappable/pages/converter.dart' as _converter;
 import 'package:json_dart_mappable/pages/home.dart' as _home;
 import 'package:json_dart_mappable/app.dart' as _app;
@@ -32,5 +31,5 @@ ServerOptions get defaultServerOptions => ServerOptions(
     _converter.Converter: ClientTarget<_converter.Converter>('converter'),
     _home.Home: ClientTarget<_home.Home>('home'),
   },
-  styles: () => [..._header.Header.styles, ..._app.App.styles],
+  styles: () => [..._app.App.styles],
 );

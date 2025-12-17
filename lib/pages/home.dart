@@ -1,6 +1,16 @@
 import 'package:jaspr/dom.dart';
 import 'package:jaspr/jaspr.dart';
 import 'package:jaspr_router/jaspr_router.dart';
+import 'package:universal_web/web.dart' as web;
+
+// By using the @client annotation this component will be automatically compiled to javascript and mounted
+// on the client. Therefore:
+// - this file and any imported file must be compilable for both server and client environments.
+// - this component and any child components will be built once on the server during pre-rendering and then
+//   again on the client during normal rendering.
+
+// Define kIsWeb locally to avoid dependency on flutter
+const bool kIsWeb = bool.fromEnvironment('dart.library.js');
 
 // By using the @client annotation this component will be automatically compiled to javascript and mounted
 // on the client. Therefore:
@@ -13,6 +23,11 @@ class Home extends StatelessComponent {
 
   @override
   Component build(BuildContext context) {
+    // Initialize highlight.js when component mounts
+    if (kIsWeb) {
+      Future.delayed(const Duration(milliseconds: 10), _runHighlight);
+    }
+
     return const div(classes: 'flex-1 bg-gradient-to-br from-blue-50 via-white to-purple-50', [
       // Hero Section
       section(classes: 'py-20 px-4', [
@@ -23,9 +38,7 @@ class Home extends StatelessComponent {
               span(classes: 'text-3xl text-white font-bold', [.text('{}')]),
             ]),
             h1(classes: 'text-6xl font-bold bg-gradient-to-r from-blue-600 via-purple-600 to-blue-800 bg-clip-text text-transparent mb-6 leading-tight', [
-              .text('Transform JSON into '),
-              br(),
-              .text('Type-Safe Dart Classes'),
+              .text('Transform JSON into\nType-Safe Dart Classes'),
             ]),
             p(classes: 'text-xl text-gray-600 max-w-3xl mx-auto leading-relaxed mb-8', [
               .text('Generate production-ready Dart models with Dart Mappable. Format, validate, and convert your JSON data into beautiful, type-safe code instantly with our powerful online converter.'),
@@ -77,19 +90,32 @@ class Home extends StatelessComponent {
           ]),
 
           // Code Example
-          div(classes: 'bg-gray-900 rounded-2xl p-8 shadow-2xl border border-gray-800', [
-            div(classes: 'flex items-center justify-between mb-4', [
+          div(classes: 'bg-slate-900 rounded-2xl p-8 shadow-2xl border border-slate-700 overflow-hidden', [
+            div(classes: 'flex items-center justify-between mb-6', [
               div(classes: 'flex items-center gap-3', [
-                div(classes: 'w-3 h-3 bg-red-500 rounded-full', []),
-                div(classes: 'w-3 h-3 bg-yellow-500 rounded-full', []),
-                div(classes: 'w-3 h-3 bg-green-500 rounded-full', []),
-                span(classes: 'text-gray-400 text-sm font-medium', [.text('Generated Dart Class')]),
+                div(classes: 'flex gap-1.5', [
+                  div(classes: 'w-3 h-3 rounded-full bg-red-500', []),
+                  div(classes: 'w-3 h-3 rounded-full bg-yellow-500', []),
+                  div(classes: 'w-3 h-3 rounded-full bg-green-500', []),
+                ]),
+                span(classes: 'text-slate-300 text-sm font-medium ml-2', [.text('Generated Dart Class')]),
               ]),
-              span(classes: 'text-xs text-gray-500 bg-gray-800 px-2 py-1 rounded', [.text('Dart Mappable')]),
+              div(classes: 'flex items-center gap-2', [
+                span(classes: 'text-xs text-slate-400 bg-slate-800 px-2 py-1 rounded-md font-medium', [.text('Dart Mappable v4.2.2')]),
+                span(classes: 'text-xs text-emerald-400 flex items-center gap-1', [
+                  span(classes: 'w-1.5 h-1.5 bg-emerald-400 rounded-full', []),
+                  .text('Ready'),
+                ]),
+              ]),
             ]),
-            pre(classes: 'text-gray-100 text-sm overflow-x-auto', [
-              code([.text('''
-// 🎯 Smart nullability detection
+            div(classes: 'bg-slate-800/50 rounded-lg p-4 border border-slate-700', [
+              div(classes: 'flex items-center gap-2 mb-3 text-slate-400 text-xs font-medium', [
+                span(classes: 'text-blue-400', [.text('//')]),
+                .text('🎯 Smart nullability detection'),
+              ]),
+              pre(classes: 'text-slate-100 text-sm leading-relaxed  font-mono', [
+                code(classes: 'language-dart', [
+                  .text("""
 @MappableClass()
 class User with UserMappable {
   const User({
@@ -104,7 +130,11 @@ class User with UserMappable {
   final int? age;
   final Profile? profile;
 }
-''')]),
+
+
+"""),
+                ]),
+              ]),
             ]),
           ]),
 
@@ -126,5 +156,35 @@ class User with UserMappable {
         ]),
       ]),
     ]);
+  }
+
+  void _runHighlight() {
+    if (!kIsWeb) return;
+    try {
+      print('🏠 HOME: Running highlight.js on code blocks');
+      final script = web.document.createElement('script') as web.HTMLScriptElement;
+      script.text = '''
+        (function() {
+          if (typeof hljs === 'undefined') {
+            console.log('highlight.js not loaded');
+            return;
+          }
+          const codeBlocks = document.querySelectorAll('pre code');
+          console.log('Found', codeBlocks.length, 'code blocks to highlight');
+          codeBlocks.forEach((block, index) => {
+            console.log('Highlighting block', index, 'with content length:', block.textContent.length);
+            block.removeAttribute('data-highlighted');
+            // Configure hljs to not warn about HTML-like content in code blocks
+            hljs.configure({ignoreUnescapedHTML: true});
+            hljs.highlightElement(block);
+            console.log('Block', index, 'highlighted');
+          });
+        })();
+      ''';
+      web.document.head!.appendChild(script);
+      script.remove();
+    } catch (e) {
+      print('🏠 HOME: Highlight error: $e');
+    }
   }
 }

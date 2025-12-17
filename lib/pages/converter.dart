@@ -1,6 +1,14 @@
 import 'dart:convert';
+import 'package:json_dart_mappable/services/clipboard_service.dart';
+import 'package:universal_web/web.dart' as web;
 import 'package:jaspr/dom.dart';
 import 'package:jaspr/jaspr.dart';
+
+import '../services/json_to_dart_converter.dart';
+import '../services/json_formatter.dart';
+
+// Define kIsWeb locally to avoid dependency on flutter
+const bool kIsWeb = bool.fromEnvironment('dart.library.js');
 
 @client
 class Converter extends StatefulComponent {
@@ -14,466 +22,547 @@ class ConverterState extends State<Converter> {
   String _jsonInput = '';
   String _dartOutput = '';
   String _errorMessage = '';
-  String _nullabilityMode = 'none'; // 'none', 'all', 'smart'
+  String _nullabilityMode = 'smart'; // 'none', 'all', 'smart'
   String _mainClassName = 'MyModel';
+  bool _isCopyingJson = false;
+  bool _isCopyingCode = false;
+  bool _alwaysIncludeMappableField = true; // New option for explicit field mapping
+  bool _useObjectInsteadOfDynamic = false; // Use Object instead of dynamic for unknown types
+  bool _includeDefaultMethods = true; // Include fromMap, fromJson, ensureInitialized methods
+  bool _useRequiredConstructor = true; // Use required constructor parameters instead of defaults
 
   void _onJsonInputChanged(String value) {
     setState(() {
       _jsonInput = value;
-      _convertJsonToDart();
+      _updateDartOutput();
     });
   }
 
-  void _onNullabilityModeChanged(String mode) {
-    setState(() {
-      _nullabilityMode = mode;
-      _convertJsonToDart();
-    });
-  }
+  void _handlePaste(dynamic event) {
+    if (!kIsWeb) return;
 
-  void _convertJsonToDart() {
-    if (_jsonInput.trim().isEmpty) {
-      setState(() {
-        _dartOutput = '';
-        _errorMessage = '';
-      });
-      return;
-    }
+    final clipboardEvent = event as web.ClipboardEvent;
+    final pastedText = clipboardEvent.clipboardData?.getData('text').trim();
 
+    if (pastedText == null || pastedText.isEmpty) return;
+
+    // Check if the pasted text is valid JSON
     try {
-      final jsonData = jsonDecode(_jsonInput);
-      // Analyze nullability for smart mode
-      final nullabilityAnalysis = _nullabilityMode == 'smart' ? _analyzeNullability(jsonData) : null;
-      final dartClass = _generateDartClass(jsonData, _mainClassName, nullabilityAnalysis);
+      final jsonData = jsonDecode(pastedText);
+      final formatted = const JsonEncoder.withIndent('  ').convert(jsonData);
+
+      // Valid JSON detected - prevent default paste and handle ourselves
+      clipboardEvent.preventDefault();
+
+      print('📋 PASTE: Valid JSON detected, formatted length: ${formatted.length}');
+
       setState(() {
-        _dartOutput = dartClass;
-        _errorMessage = '';
+        _jsonInput = formatted;
+        _errorMessage = ''; // Clear any previous errors
+        _updateDartOutput();
       });
+
+      // Sync the DOM element value
+      final element = web.document.getElementById('json-input-editor') as web.HTMLTextAreaElement?;
+      if (element != null) {
+        element.value = formatted;
+        // Set cursor to end of text
+        element.setSelectionRange(formatted.length, formatted.length);
+      }
+
+      print('📋 PASTE: JSON input updated successfully');
     } catch (e) {
-      setState(() {
-        _errorMessage = 'Invalid JSON: ${e.toString()}';
-        _dartOutput = '';
-      });
+      // Not valid JSON - let default paste behavior happen
+      print('📋 PASTE: Not valid JSON, letting default paste behavior');
+      // Don't prevent default - let the browser paste normally
     }
   }
 
-  Map<String, bool> _analyzeNullability(dynamic json, [String path = '']) {
-    final analysis = <String, bool>{};
+  void _updateDartOutput() {
+    print('🎨 UI: _updateDartOutput called with className="$_mainClassName", nullabilityMode="$_nullabilityMode"');
 
-    if (json is Map<String, dynamic>) {
-      json.forEach((key, value) {
-        final fieldPath = path.isEmpty ? key : '$path.$key';
-        analysis[fieldPath] = value == null;
+    final result = JsonToDartConverter.convertJsonToDart(
+      _jsonInput,
+      _mainClassName,
+      _nullabilityMode,
+      alwaysIncludeMappableField: _alwaysIncludeMappableField,
+      useObjectInsteadOfDynamic: _useObjectInsteadOfDynamic,
+      includeDefaultMethods: _includeDefaultMethods,
+      useRequiredConstructor: _useRequiredConstructor,
+    );
 
-        if (value is Map<String, dynamic>) {
-          analysis.addAll(_analyzeNullability(value, fieldPath));
-        } else if (value is List && value.isNotEmpty) {
-          // For arrays, check if any item has this field as null or missing
-          final hasNulls = value.any((item) => item is Map && (item[key] == null || !item.containsKey(key)));
-          analysis[fieldPath] = hasNulls;
+    print('🎨 UI: Converter returned ${result.code.length} chars of code, error: "${result.error}"');
 
-          // Analyze nested structures in arrays
-          if (value.first is Map<String, dynamic>) {
-            analysis.addAll(_analyzeNullability(value.first, fieldPath));
-          }
-        }
-      });
-    } else if (json is List && json.isNotEmpty && json.first is Map<String, dynamic>) {
-      // Analyze all items in the array to see which fields are sometimes missing
-      final allKeys = <String>{};
-      final missingCounts = <String, int>{};
-
-      for (final item in json) {
-        if (item is Map<String, dynamic>) {
-          allKeys.addAll(item.keys);
-          for (final key in allKeys) {
-            if (!item.containsKey(key) || item[key] == null) {
-              missingCounts[key] = (missingCounts[key] ?? 0) + 1;
-            }
-          }
-        }
-      }
-
-      for (final key in allKeys) {
-        final fieldPath = path.isEmpty ? key : '$path.$key';
-        analysis[fieldPath] = (missingCounts[key] ?? 0) > 0;
-      }
-
-      // Analyze nested structures
-      if (json.first is Map<String, dynamic>) {
-        analysis.addAll(_analyzeNullability(json.first, path));
-      }
-    }
-
-    return analysis;
-  }
-
-  String _generateDartClass(dynamic json, String className, [Map<String, bool>? nullabilityAnalysis]) {
-    final buffer = StringBuffer();
-
-    buffer.writeln("import 'package:dart_mappable/dart_mappable.dart';");
-    buffer.writeln();
-    buffer.writeln('part \'${className.toLowerCase()}.mapper.dart\';');
-    buffer.writeln();
-
-    if (json is Map<String, dynamic>) {
-      _generateClassFromMap(buffer, json, className, nullabilityAnalysis);
-    } else if (json is List) {
-      if (json.isNotEmpty) {
-        _generateClassFromList(buffer, json, className, nullabilityAnalysis);
-      } else {
-        buffer.writeln('@MappableClass()');
-        buffer.writeln('class $className with ${className}Mappable {');
-        buffer.writeln('  const $className();');
-        buffer.writeln('}');
-      }
-    } else {
-      buffer.writeln('@MappableClass()');
-      buffer.writeln('class $className with ${className}Mappable {');
-      buffer.writeln('  final dynamic value;');
-      buffer.writeln('  const $className(this.value);');
-      buffer.writeln('}');
-    }
-
-    return buffer.toString();
-  }
-
-  void _generateClassFromMap(StringBuffer buffer, Map<String, dynamic> map, String className, [Map<String, bool>? nullabilityAnalysis]) {
-    // Collect all nested classes first
-    final nestedClassBuffers = <StringBuffer>[];
-    final nestedClasses = <String>[];
-
-    map.forEach((key, value) {
-      if (value is Map<String, dynamic>) {
-        final nestedClassName = '${_sanitizeFieldName(key)[0].toUpperCase()}${_sanitizeFieldName(key).substring(1)}';
-        if (!nestedClasses.contains(nestedClassName)) {
-          nestedClasses.add(nestedClassName);
-          final nestedBuffer = StringBuffer();
-          _generateClassFromMap(nestedBuffer, value, nestedClassName, nullabilityAnalysis);
-          nestedClassBuffers.add(nestedBuffer);
-        }
-      } else if (value is List && value.isNotEmpty && value.first is Map<String, dynamic>) {
-        final nestedClassName = '${_sanitizeFieldName(key)[0].toUpperCase()}${_sanitizeFieldName(key).substring(1)}Item';
-        if (!nestedClasses.contains(nestedClassName)) {
-          nestedClasses.add(nestedClassName);
-          final nestedBuffer = StringBuffer();
-          _generateClassFromMap(nestedBuffer, value.first as Map<String, dynamic>, nestedClassName, nullabilityAnalysis);
-          nestedClassBuffers.add(nestedBuffer);
-        }
-      }
+    setState(() {
+      _dartOutput = result.code;
+      _errorMessage = result.error;
     });
 
-    // Generate the main class first
-    buffer.writeln('@MappableClass()');
-    buffer.writeln('class $className with ${className}Mappable {');
-    buffer.writeln('  const $className(');
-
-    final fields = <String>[];
-    final constructors = <String>[];
-
-    map.forEach((key, value) {
-      final fieldName = _sanitizeFieldName(key);
-      final fieldType = _getDartType(value, fieldName, nullabilityAnalysis);
-      fields.add('  final $fieldType $fieldName;');
-      constructors.add('    this.$fieldName,');
-    });
-
-    buffer.writeln(constructors.join('\n'));
-    buffer.writeln('  );');
-    buffer.writeln();
-
-    fields.forEach(buffer.writeln);
-    buffer.writeln('}');
-
-    // Add all nested classes after the main class
-    for (final nestedBuffer in nestedClassBuffers) {
-      buffer.writeln();
-      buffer.write(nestedBuffer);
-    }
+    print('🎨 UI: State updated. _dartOutput length: ${_dartOutput.length}, _errorMessage: "$_errorMessage"');
   }
 
-  void _generateClassFromList(StringBuffer buffer, List list, String className, [Map<String, bool>? nullabilityAnalysis]) {
-    final itemClassName = '${className}Item';
-
-    if (list.isNotEmpty) {
-      final firstItem = list.first;
-      if (firstItem is Map<String, dynamic>) {
-        _generateClassFromMap(buffer, firstItem, itemClassName, nullabilityAnalysis);
-        buffer.writeln();
-      }
-    }
-
-    buffer.writeln('@MappableClass()');
-    buffer.writeln('class $className with ${className}Mappable {');
-    buffer.writeln('  const $className(');
-    buffer.writeln('    this.items,');
-    buffer.writeln('  );');
-    buffer.writeln();
-    buffer.writeln('  final List<${list.isNotEmpty && list.first is Map ? itemClassName : 'dynamic'}> items;');
-    buffer.writeln('}');
-  }
-
-  String _sanitizeFieldName(String fieldName) {
-    // Convert to camelCase and ensure it's a valid Dart identifier
-    final sanitized = fieldName.replaceAll(RegExp(r'[^a-zA-Z0-9_]'), '_').replaceAll(RegExp(r'^[0-9]'), '_');
-
-    if (sanitized.isEmpty) return 'field';
-
-    // Convert to camelCase
-    final parts = sanitized.split('_');
-    if (parts.length == 1) return sanitized;
-
-    return parts.first + parts.skip(1).map((part) => part.isNotEmpty ? part[0].toUpperCase() + part.substring(1) : '').join('');
-  }
-
-  String _getDartType(dynamic value, String fieldName, [Map<String, bool>? nullabilityAnalysis]) {
-    String baseType;
-    if (value == null) {
-      baseType = 'dynamic';
-    } else if (value is String) {
-      baseType = 'String';
-    } else if (value is int) {
-      baseType = 'int';
-    } else if (value is double) {
-      baseType = 'double';
-    } else if (value is bool) {
-      baseType = 'bool';
-    } else if (value is List) {
-      if (value.isEmpty) {
-        baseType = 'List<dynamic>';
-      } else {
-        final itemType = _getDartType(value.first, fieldName, nullabilityAnalysis);
-        baseType = 'List<$itemType>';
-      }
-    } else if (value is Map<String, dynamic>) {
-      final className = '${fieldName[0].toUpperCase()}${fieldName.substring(1)}';
-      baseType = className;
-    } else {
-      baseType = 'dynamic';
-    }
-
-    // Apply nullability based on mode
-    switch (_nullabilityMode) {
-      case 'all':
-        return baseType == 'dynamic' ? 'dynamic' : '$baseType?';
-      case 'smart':
-        // For smart mode, check if this field should be nullable based on analysis
-        if (nullabilityAnalysis != null && nullabilityAnalysis[fieldName] == true) {
-          return baseType == 'dynamic' ? 'dynamic' : '$baseType?';
-        }
-        return baseType;
-      case 'none':
-      default:
-        return baseType;
+  void _runHighlight() {
+    if (!kIsWeb) return;
+    try {
+      print('🎨 UI: Running highlight.js on code blocks');
+      final script = web.document.createElement('script') as web.HTMLScriptElement;
+      script.text = '''
+        (function() {
+          if (typeof hljs === 'undefined') {
+            console.log('highlight.js not loaded');
+            return;
+          }
+          const codeBlocks = document.querySelectorAll('pre code');
+          console.log('Found', codeBlocks.length, 'code blocks to highlight');
+          codeBlocks.forEach((block, index) => {
+            console.log('Highlighting block', index, 'with content length:', block.textContent.length);
+            block.removeAttribute('data-highlighted');
+            // Configure hljs to not warn about HTML-like content in code blocks
+            hljs.configure({ignoreUnescapedHTML: true});
+            hljs.highlightElement(block);
+            console.log('Block', index, 'highlighted');
+          });
+        })();
+      ''';
+      web.document.head!.appendChild(script);
+      script.remove();
+    } catch (e) {
+      print('🎨 UI: Highlight error: $e');
     }
   }
 
   @override
   Component build(BuildContext context) {
     // Initialize highlight.js when component mounts or content changes
-    // This will be called on the client side
-    if (_dartOutput.isNotEmpty || (_jsonInput.isNotEmpty && _errorMessage.isEmpty)) {
-      // Use a timeout to ensure DOM is updated
-      // ignore: undefined_prefixed_name
-      // dart.library.html
-      if (identical(0, 0.0)) {
-        // Client-side only code
-        Future.delayed(const Duration(milliseconds: 100), () {
-          try {
-            // ignore: avoid_dynamic_calls
-            (context as dynamic).callMethod('eval', ['''
-              if (typeof hljs !== 'undefined') {
-                hljs.highlightAll();
-              }
-            ''']);
-          } catch (e) {
-            // Ignore errors if highlight.js is not loaded
-          }
-        });
-      }
+    if (kIsWeb && (_dartOutput.isNotEmpty || _jsonInput.isNotEmpty)) {
+      Future.delayed(const Duration(milliseconds: 10), _runHighlight);
     }
 
-    return section(classes: 'min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 py-8 px-4', [
+    return section(classes: 'min-h-screen bg-[#f8fafc] py-8 px-4 sm:px-6 lg:px-8 font-sans', [
       div(classes: 'max-w-7xl mx-auto', [
-        // Header Section
-        const div(classes: 'text-center mb-12', [
-          div(classes: 'inline-flex items-center justify-center w-16 h-16 bg-gradient-to-r from-blue-600 to-purple-600 rounded-full mb-6 shadow-lg', [
-            span(classes: 'text-2xl text-white font-bold', [.text('{}')]),
+        // Compact Header Section
+        div(classes: 'flex flex-col md:flex-row items-center justify-between mb-8 gap-4', [
+          const div(classes: 'flex items-center gap-4', [
+            div(classes: 'p-2.5 bg-blue-600 rounded-xl shadow-lg shadow-blue-200', [
+              span(classes: 'text-xl text-white font-bold', [.text('{}')]),
+            ]),
+            div([
+              h1(classes: 'text-2xl font-black text-slate-900 tracking-tight', [.text('JSON to Dart')]),
+              p(classes: 'text-xs text-slate-500 font-medium', [
+                .text('Convert your JSON to type-safe '),
+                span(classes: 'text-blue-600 font-bold', [.text('dart_mappable')]),
+                .text(' classes.'),
+              ]),
+            ]),
           ]),
-          h1(classes: 'text-5xl font-bold bg-gradient-to-r from-blue-600 via-purple-600 to-blue-800 bg-clip-text text-transparent mb-4', [.text('JSON to Dart Converter')]),
-          p(classes: 'text-xl text-gray-600 max-w-2xl mx-auto leading-relaxed', [.text('Transform your JSON data into type-safe Dart classes with Dart Mappable. Format, validate, and generate clean, production-ready code instantly.')]),
-          div(classes: 'flex justify-center gap-4 mt-6', [
-            div(classes: 'flex items-center gap-2 px-4 py-2 bg-white rounded-full shadow-sm border border-gray-200', [
-              div(classes: 'w-3 h-3 bg-green-500 rounded-full animate-pulse', []),
-              span(classes: 'text-sm text-gray-600 font-medium', [.text('Real-time Conversion')]),
-            ]),
-            div(classes: 'flex items-center gap-2 px-4 py-2 bg-white rounded-full shadow-sm border border-gray-200', [
-              div(classes: 'w-3 h-3 bg-blue-500 rounded-full', []),
-              span(classes: 'text-sm text-gray-600 font-medium', [.text('Type-Safe Output')]),
-            ]),
-            div(classes: 'flex items-center gap-2 px-4 py-2 bg-white rounded-full shadow-sm border border-gray-200', [
-              div(classes: 'w-3 h-3 bg-purple-500 rounded-full', []),
-              span(classes: 'text-sm text-gray-600 font-medium', [.text('Null Safety')]),
-            ]),
+          div(classes: 'flex gap-2', [
+            _featureBadge('Real-time', 'bg-emerald-500/5 text-emerald-500 border-emerald-500/10'),
+            _featureBadge('Type-Safe', 'bg-blue-500/5 text-blue-500 border-blue-500/10'),
+            _featureBadge('Null-Safe', 'bg-indigo-500/5 text-indigo-500 border-indigo-500/10'),
           ]),
         ]),
 
         // Main Converter Section
-        div(classes: 'bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden', [
-          div(classes: 'flex flex-col lg:flex-row', [
-            // JSON Input Section
-            div(classes: 'flex-1 flex flex-col p-8 border-r border-gray-100', [
-              div(classes: 'flex justify-between items-center mb-6', [
-                const div(classes: 'flex items-center gap-3', [
-                  div(classes: 'w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center', [
-                    span(classes: 'text-blue-600 font-bold text-sm', [.text('{')]),
+        div(classes: 'grid grid-cols-1 lg:grid-cols-2 gap-8 items-start', [
+          // Left Column: Input & Config
+          div(classes: 'space-y-6', [
+            // Config Card
+            div(classes: 'bg-white rounded-3xl shadow-sm border border-slate-200 p-6 space-y-6', [
+              div(classes: 'flex items-center justify-between', [
+                const h2(classes: 'text-lg font-bold text-slate-800 flex items-center gap-2', [span(classes: 'w-1.5 h-5 bg-blue-600 rounded-full', []), .text('Configuration')]),
+                div(classes: 'flex gap-2', [
+                  button(classes: 'text-xs font-bold text-blue-600 hover:text-blue-700 transition-colors flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 rounded-lg', onClick: _loadExample, const [
+                    span(classes: 'text-sm', [.text('💡')]),
+                    .text('Simple'),
                   ]),
-                  h2(classes: 'text-2xl font-bold text-gray-800', [.text('JSON Input')]),
-                ]),
-                div(classes: 'flex gap-3', [
-                  button(classes: 'px-4 py-2 text-sm bg-gradient-to-r from-purple-600 to-purple-700 text-white rounded-lg hover:from-purple-700 hover:to-purple-800 transition-all duration-200 cursor-pointer shadow-md hover:shadow-lg transform hover:-translate-y-0.5', onClick: _formatJson, const [
-                    span(classes: 'font-medium', [.text('✨ Format')]),
-                  ]),
-                  button(classes: 'px-4 py-2 text-sm bg-gradient-to-r from-orange-500 to-orange-600 text-white rounded-lg hover:from-orange-600 hover:to-orange-700 transition-all duration-200 cursor-pointer shadow-md hover:shadow-lg transform hover:-translate-y-0.5', onClick: _minifyJson, const [
-                    span(classes: 'font-medium', [.text('🔥 Minify')]),
-                  ]),
-                  button(classes: 'px-4 py-2 text-sm border-2 border-gray-300 text-gray-600 bg-white rounded-lg hover:bg-gray-50 hover:border-gray-400 transition-all duration-200 cursor-pointer', onClick: () => _onJsonInputChanged(''), const [
-                    span(classes: 'font-medium', [.text('🗑️ Clear')]),
+                  button(classes: 'text-xs font-bold text-orange-600 hover:text-orange-700 transition-colors flex items-center gap-1.5 px-3 py-1.5 bg-orange-50 rounded-lg', onClick: _loadComplexExample, const [
+                    span(classes: 'text-sm', [.text('🔄')]),
+                    .text('Complex'),
                   ]),
                 ]),
               ]),
 
-              // Configuration Section
-              div(classes: 'bg-gradient-to-r from-gray-50 to-blue-50 rounded-xl p-6 mb-6 border border-gray-200', [
-                div(classes: 'grid grid-cols-1 md:grid-cols-2 gap-6', [
-                  div(classes: 'space-y-2', [
-                    const label(classes: 'block text-sm font-semibold text-gray-700 mb-2', [.text('📝 Class Name')]),
-                    input(classes: 'w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all duration-200 bg-white', type: InputType.text, value: _mainClassName, onInput: (value) => setState(() => _mainClassName = value as String? ?? 'MyModel')),
-                  ]),
-                  div(classes: 'space-y-3', [
-                    const label(classes: 'block text-sm font-semibold text-gray-700 mb-2', [.text('🎯 Nullability Mode')]),
-                    div(classes: 'flex flex-wrap gap-3', [
-                      label(classes: 'flex items-center gap-2 cursor-pointer', [
-                        input(type: InputType.radio, name: 'nullability', value: 'none', checked: _nullabilityMode == 'none', onChange: (e) => _onNullabilityModeChanged('none')),
-                        const span(classes: 'px-3 py-1.5 bg-gray-100 text-gray-700 rounded-full text-sm font-medium hover:bg-gray-200 transition-colors', [.text('None')]),
-                      ]),
-                      label(classes: 'flex items-center gap-2 cursor-pointer', [
-                        input(type: InputType.radio, name: 'nullability', value: 'all', checked: _nullabilityMode == 'all', onChange: (e) => _onNullabilityModeChanged('all')),
-                        const span(classes: 'px-3 py-1.5 bg-blue-100 text-blue-700 rounded-full text-sm font-medium hover:bg-blue-200 transition-colors', [.text('All Nullable')]),
-                      ]),
-                      label(classes: 'flex items-center gap-2 cursor-pointer', [
-                        input(type: InputType.radio, name: 'nullability', value: 'smart', checked: _nullabilityMode == 'smart', onChange: (e) => _onNullabilityModeChanged('smart')),
-                        const span(classes: 'px-3 py-1.5 bg-purple-100 text-purple-700 rounded-full text-sm font-medium hover:bg-purple-200 transition-colors', [.text('Smart Detection')]),
-                      ]),
-                    ]),
-                  ]),
-                ]),
-              ]),
-
-              // JSON Input Area - Compact and Seamless
-              div(classes: 'space-y-4', [
-                // Main JSON Input
-                div(classes: 'relative', [
-                  textarea(
-                    classes: 'w-full p-6 border-2 border-gray-200 rounded-xl font-mono text-sm bg-gradient-to-br from-gray-50 to-blue-50 text-gray-800 min-h-48 resize-vertical focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all duration-300 shadow-sm',
-                    attributes: {'value': _jsonInput},
-                    onInput: _onJsonInputChanged,
-                    placeholder: '{"name": "John", "age": 30, "active": true}',
-                    rows: 12,
-                    const [],
+              div(classes: 'grid grid-cols-1 md:grid-cols-2 gap-4', [
+                div(classes: 'space-y-1.5', [
+                  const label(classes: 'block text-[11px] font-bold text-slate-500 uppercase tracking-wider', [.text('Root Class Name')]),
+                  input(
+                    classes: 'w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-100 focus:border-blue-500 transition-all outline-none font-semibold text-sm',
+                    type: InputType.text,
+                    attributes: {'value': _mainClassName},
+                    onInput: (value) {
+                      setState(() {
+                        _mainClassName = value as String? ?? 'MyModel';
+                        _updateDartOutput();
+                      });
+                    },
                   ),
-
-                  // Status indicators in top-right
-                  if (_jsonInput.isNotEmpty) div(classes: 'absolute top-4 right-4 flex gap-2 z-10', [
-                    if (_errorMessage.isEmpty) const div(classes: 'px-2 py-1 bg-green-100 text-green-700 rounded-full text-xs font-medium flex items-center gap-1', [
-                      span(classes: 'w-2 h-2 bg-green-500 rounded-full', []),
-                      .text('Valid'),
-                    ]) else const div(classes: 'px-2 py-1 bg-red-100 text-red-700 rounded-full text-xs font-medium flex items-center gap-1', [
-                      span(classes: 'w-2 h-2 bg-red-500 rounded-full', []),
-                      .text('Invalid'),
-                    ]),
-                  ]),
-
-                  // Quick actions at bottom
-                  if (_jsonInput.isNotEmpty && _errorMessage.isEmpty) div(classes: 'absolute bottom-4 left-4 right-4 flex justify-between items-center bg-white/90 backdrop-blur-sm rounded-lg p-2 border border-gray-200', [
-                    const div(classes: 'text-xs text-gray-600 font-medium', [.text('JSON ready for conversion')]),
-                    div(classes: 'flex gap-2', [
-                      button(classes: 'px-3 py-1 text-xs bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-md transition-colors font-medium', onClick: _formatJson, const [.text('Format')]),
-                      button(classes: 'px-3 py-1 text-xs bg-orange-100 hover:bg-orange-200 text-orange-700 rounded-md transition-colors font-medium', onClick: _minifyJson, const [.text('Minify')]),
-                    ]),
-                  ]),
                 ]),
-
-                // JSON Syntax Highlighted Preview (only show if valid JSON)
-                if (_jsonInput.isNotEmpty && _errorMessage.isEmpty) div(classes: 'relative', [
-                  const div(classes: 'text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2', [
-                    span(classes: 'text-blue-600', [.text('🎨')]),
-                    .text('Syntax Highlighted Preview'),
-                  ]),
-                  pre(classes: 'w-full p-4 bg-gradient-to-br from-slate-50 to-blue-50 border-2 border-blue-200 rounded-xl overflow-x-auto font-mono text-sm shadow-sm max-h-40', [
-                    code(classes: 'language-json block', [.text(_getFormattedJson())]),
-                  ]),
+                div(classes: 'space-y-1.5', [
+                  const label(classes: 'block text-[11px] font-bold text-slate-500 uppercase tracking-wider', [.text('Nullability')]),
+                  select(
+                    classes: 'w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-100 focus:border-blue-500 transition-all outline-none font-semibold text-sm appearance-none',
+                    onChange: (value) {
+                      print('🎛️ SELECT: Nullability mode changed, raw value: $value, type: ${value.runtimeType}');
+                      final newMode = value.first;
+                      print('🎛️ SELECT: Setting nullability mode to: "$newMode"');
+                      setState(() {
+                        _nullabilityMode = newMode;
+                        _updateDartOutput();
+                      });
+                    },
+                    [
+                      option(value: 'none', selected: _nullabilityMode == 'none', const [.text('None')]),
+                      option(value: 'all', selected: _nullabilityMode == 'all', const [.text('All Nullable')]),
+                      option(value: 'smart', selected: _nullabilityMode == 'smart', const [.text('Smart Detection')]),
+                    ],
+                  ),
                 ]),
               ]),
+              // Additional Options
+              div(classes: 'grid grid-cols-1 gap-4', [
+                // MappableField Option
+                div(classes: 'space-y-2', [
+                  const label(classes: 'block text-[11px] font-bold text-slate-500 uppercase tracking-wider', [.text('Field Mapping')]),
+                  div(classes: 'flex items-center gap-3', [
+                    input(
+                      id: 'mappable-field-checkbox',
+                      type: InputType.checkbox,
+                      checked: _alwaysIncludeMappableField,
+                      onChange: (value) {
+                        print('📋 CHECKBOX: Always include MappableField changed to: $value');
+                        setState(() {
+                          _alwaysIncludeMappableField = value as bool? ?? false;
+                          _updateDartOutput();
+                        });
+                      },
+                      classes: 'w-4 h-4 text-blue-600 bg-slate-50 border-slate-200 rounded focus:ring-blue-100 focus:ring-2',
+                    ),
+                    const label(
+                      attributes: {'for': 'mappable-field-checkbox'},
+                      classes: 'text-sm font-semibold text-slate-700 cursor-pointer',
+                      [.text('Always include @MappableField annotations')],
+                    ),
+                  ]),
+                  const p(classes: 'text-[10px] text-slate-500 leading-tight', [
+                    .text('When enabled, all fields will have explicit @MappableField(key: \'...\') annotations for consistency.'),
+                  ]),
+                ]),
 
-              if (_errorMessage.isNotEmpty) div(classes: 'mt-4 p-4 bg-gradient-to-r from-red-50 to-red-100 border border-red-200 text-red-700 rounded-lg flex items-center gap-3', [
-                const span(classes: 'text-red-500 text-lg', [.text('⚠️')]),
-                span(classes: 'font-medium', [.text(_errorMessage)]),
+                // Object instead of Dynamic
+                div(classes: 'space-y-2', [
+                  const label(classes: 'block text-[11px] font-bold text-slate-500 uppercase tracking-wider', [.text('Type Handling')]),
+                  div(classes: 'flex items-center gap-3', [
+                    input(
+                      id: 'object-dynamic-checkbox',
+                      type: InputType.checkbox,
+                      checked: _useObjectInsteadOfDynamic,
+                      onChange: (value) {
+                        print('📋 CHECKBOX: Use Object instead of dynamic changed to: $value');
+                        setState(() {
+                          _useObjectInsteadOfDynamic = value as bool? ?? false;
+                          _updateDartOutput();
+                        });
+                      },
+                      classes: 'w-4 h-4 text-blue-600 bg-slate-50 border-slate-200 rounded focus:ring-blue-100 focus:ring-2',
+                    ),
+                    const label(
+                      attributes: {'for': 'object-dynamic-checkbox'},
+                      classes: 'text-sm font-semibold text-slate-700 cursor-pointer',
+                      [.text('Use Object instead of dynamic')],
+                    ),
+                  ]),
+                  const p(classes: 'text-[10px] text-slate-500 leading-tight', [
+                    .text('When enabled, unknown types will use Object instead of dynamic for better type safety.'),
+                  ]),
+                ]),
+
+                // Include Default Methods
+                div(classes: 'flex items-center gap-3', [
+                  input(
+                    id: 'default-methods-checkbox',
+                    type: InputType.checkbox,
+                    checked: _includeDefaultMethods,
+                    onChange: (value) {
+                      print('📋 CHECKBOX: Include default methods changed to: $value');
+                      setState(() {
+                        _includeDefaultMethods = value as bool? ?? false;
+                        _updateDartOutput();
+                      });
+                    },
+                    classes: 'w-4 h-4 text-blue-600 bg-slate-50 border-slate-200 rounded focus:ring-blue-100 focus:ring-2',
+                  ),
+                  const label(
+                    attributes: {'for': 'default-methods-checkbox'},
+                    classes: 'text-sm font-semibold text-slate-700 cursor-pointer',
+                    [.text('Include default methods (fromMap, fromJson, ensureInitialized)')],
+                  ),
+                ]),
+
+                // Required Constructor
+                div(classes: 'flex items-center gap-3', [
+                  input(
+                    id: 'required-constructor-checkbox',
+                    type: InputType.checkbox,
+                    checked: _useRequiredConstructor,
+                    onChange: (value) {
+                      print('📋 CHECKBOX: Use required constructor changed to: $value');
+                      setState(() {
+                        _useRequiredConstructor = value as bool? ?? false;
+                        _updateDartOutput();
+                      });
+                    },
+                    classes: 'w-4 h-4 text-blue-600 bg-slate-50 border-slate-200 rounded focus:ring-blue-100 focus:ring-2',
+                  ),
+                  const label(
+                    attributes: {'for': 'required-constructor-checkbox'},
+                    classes: 'text-sm font-semibold text-slate-700 cursor-pointer',
+                    [.text('Use required constructor parameters')],
+                  ),
+                ]),
+              ]),
+              // Force Refresh Button
+              div(classes: 'flex justify-center pt-2', [
+                button(
+                  classes: 'px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold rounded-lg transition-all shadow-lg shadow-blue-900/20 flex items-center gap-2 active:scale-95',
+                  onClick: () {
+                    print('🔄 MANUAL: Force refresh triggered');
+                    _updateDartOutput();
+                  },
+                  const [
+                    span(classes: 'text-base', [.text('🔄')]),
+                    .text('Force Refresh'),
+                  ],
+                ),
               ]),
             ]),
 
-            // Dart Output Section
-            div(classes: 'flex-1 flex flex-col p-8', [
-              div(classes: 'flex justify-between items-center mb-6', [
+            // Input Card
+            div(classes: 'bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden flex flex-col ring-1 ring-slate-200/50', [
+              div(classes: 'px-5 py-3 border-b border-slate-100 flex items-center justify-between bg-slate-50/50', [
                 const div(classes: 'flex items-center gap-3', [
-                  div(classes: 'w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center', [
-                    span(classes: 'text-green-600 font-bold text-sm', [.text('</>')]),
+                  div(classes: 'flex gap-1.5', [
+                    div(classes: 'w-2.5 h-2.5 rounded-full bg-slate-200', []),
+                    div(classes: 'w-2.5 h-2.5 rounded-full bg-slate-200', []),
+                    div(classes: 'w-2.5 h-2.5 rounded-full bg-slate-200', []),
                   ]),
-                  h2(classes: 'text-2xl font-bold text-gray-800', [.text('Dart Output')]),
+                  h2(classes: 'text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]', [.text('JSON Input')]),
                 ]),
-                if (_dartOutput.isNotEmpty) button(classes: 'px-6 py-3 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-lg hover:from-green-700 hover:to-green-800 transition-all duration-200 cursor-pointer shadow-md hover:shadow-lg transform hover:-translate-y-0.5 flex items-center gap-2', onClick: () => _copyToClipboard(_dartOutput), const [
-                  span(classes: 'font-medium', [.text('📋 Copy Code')]),
+                div(classes: 'flex gap-1', [
+                  _iconButtonDark('✨', 'Format', _formatJson),
+                  _iconButtonDark('🔥', 'Minify', _minifyJson),
+                  _iconButtonDark('🗑️', 'Clear', () => _onJsonInputChanged('')),
                 ]),
               ]),
+              div(classes: 'relative bg-white', [
+                textarea(
+                  id: 'json-input-editor',
+                  classes: 'w-full p-6 font-mono text-sm bg-white text-slate-800 h-[300px] overflow-auto resize-none outline-none focus:ring-0 placeholder:text-slate-300 border-none',
+                  attributes: {
+                    'value': _jsonInput,
+                    'spellcheck': 'false',
+                    'aria-label': 'JSON Input',
+                  },
+                  onInput: _onJsonInputChanged,
+                  events: {'paste': _handlePaste},
+                  placeholder: 'Paste your JSON here...',
+                  const [],
+                ),
+                if (_errorMessage.isNotEmpty)
+                  div(classes: 'absolute bottom-0 left-0 right-0 p-3 bg-red-50 border-t border-red-100 flex items-center gap-2 text-red-700 text-[11px] font-bold z-20', [
+                    const span(classes: 'text-sm', [.text('⚠️')]),
+                    .text(_errorMessage),
+                  ]),
+              ]),
+            ]),
 
-              div(classes: 'relative flex-1', [
-                pre(classes: 'w-full min-h-80 max-h-[60vh] p-6 bg-gradient-to-br from-gray-900 to-blue-900 border-2 border-gray-200 rounded-xl overflow-y-auto overflow-x-auto font-mono text-sm text-gray-100 whitespace-pre shadow-lg scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-gray-800', [
-                  code(classes: 'language-dart block', [.text(_dartOutput.isEmpty ? '// Your generated Dart classes will appear here...\n// Try pasting some JSON on the left!' : _dartOutput)]),
+            const hr(classes: 'border-slate-100'),
+
+            // Preview Card
+            if (_jsonInput.isNotEmpty && _errorMessage.isEmpty)
+              div(classes: 'bg-[#0f172a] rounded-3xl shadow-xl border border-slate-800 overflow-hidden flex flex-col ring-1 ring-slate-700/50 min-h-[200px]', [
+                div(classes: 'px-5 py-3 border-b border-slate-800/50 flex items-center justify-between bg-slate-900/90 backdrop-blur-md', [
+                  const div(classes: 'flex items-center gap-4', [
+                    div(classes: 'flex gap-1.5', [
+                      div(classes: 'w-2.5 h-2.5 rounded-full bg-[#ff5f56] shadow-sm shadow-red-900/20', []),
+                      div(classes: 'w-2.5 h-2.5 rounded-full bg-[#ffbd2e] shadow-sm shadow-amber-900/20', []),
+                      div(classes: 'w-2.5 h-2.5 rounded-full bg-[#27c93f] shadow-sm shadow-emerald-900/20', []),
+                    ]),
+                    div(classes: 'h-3 w-[1px] bg-slate-800 mx-1', []),
+                    h2(classes: 'text-[10px] font-bold text-slate-500 font-mono uppercase tracking-[0.2em]', [.text('preview.json')]),
+                    div(classes: 'flex items-center gap-1.5 px-2 py-0.5 bg-blue-500/10 border border-blue-500/20 rounded-md', [
+                      span(classes: 'w-1 h-1 rounded-full bg-blue-500 animate-pulse', []),
+                      span(classes: 'text-[9px] text-blue-400 uppercase tracking-tighter font-bold', [.text('Live')]),
+                    ]),
+                  ]),
+                  button(
+                    classes: 'text-[10px] font-bold ${_isCopyingJson ? 'text-emerald-400' : 'text-slate-500 hover:text-blue-400'} transition-all uppercase tracking-widest flex items-center gap-1.5 px-3 py-1.5 hover:bg-slate-800 rounded-lg active:scale-95',
+                    onClick: () => _copyToClipboard(_jsonInput, 'json'),
+                    [
+                      if (_isCopyingJson) const span(classes: 'text-xs', [.text('✅')]),
+                      .text(_isCopyingJson ? 'Copied' : 'Copy JSON'),
+                    ],
+                  ),
                 ]),
-                if (_dartOutput.isNotEmpty) const div(classes: 'absolute top-4 right-4 flex gap-2 z-10', [
-                  div(classes: 'px-3 py-1 bg-green-500 text-white rounded-full text-xs font-medium animate-pulse', [.text('Generated')]),
+                div(classes: 'relative flex-1 overflow-auto max-h-[400px] bg-[#0f172a]', [
+                  pre(classes: 'm-0 p-6 border-none bg-transparent font-mono text-[13px] leading-[1.6] whitespace-pre-wrap break-all overflow-x-hidden', [
+                    code(classes: 'hljs language-json block !bg-transparent !p-0 !m-0 font-mono text-[13px] leading-[1.6] text-slate-300', [.text(_jsonInput)]),
+                  ]),
                 ]),
               ]),
+          ]),
+
+          // Right Column: Output
+          div(classes: 'bg-[#0f172a] rounded-3xl shadow-2xl border border-slate-800 overflow-hidden flex flex-col sticky top-8', [
+            div(classes: 'px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-900/50', [
+              div(classes: 'flex items-center gap-3', [
+                const div(classes: 'flex gap-1.5', [
+                  div(classes: 'w-2.5 h-2.5 rounded-full bg-[#ff5f56]', []),
+                  div(classes: 'w-2.5 h-2.5 rounded-full bg-[#ffbd2e]', []),
+                  div(classes: 'w-2.5 h-2.5 rounded-full bg-[#27c93f]', []),
+                ]),
+                span(classes: 'ml-2 text-[11px] font-bold text-slate-500 font-mono uppercase tracking-widest', [.text('${_mainClassName.toLowerCase()}.dart')]),
+              ]),
+              if (_dartOutput.isNotEmpty)
+                div(classes: 'flex gap-2', [
+                  button(classes: 'px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-bold rounded-lg transition-all border border-slate-700 flex items-center gap-1.5 active:scale-95', onClick: _downloadCode, const [
+                    span(classes: 'text-sm', [.text('📥')]),
+                    .text('Save'),
+                  ]),
+                  button(
+                    classes: 'px-4 py-1.5 ${_isCopyingCode ? 'bg-emerald-600' : 'bg-blue-600 hover:bg-blue-500'} text-white text-[11px] font-bold rounded-lg transition-all shadow-lg shadow-blue-900/20 flex items-center gap-1.5 active:scale-95',
+                    onClick: () => _copyToClipboard(_dartOutput, 'code'),
+                    [
+                      span(classes: 'text-sm', [.text(_isCopyingCode ? '✅' : '📋')]),
+                      .text(_isCopyingCode ? 'Copied!' : 'Copy Code'),
+                    ],
+                  ),
+                ]),
+            ]),
+            div(classes: 'relative flex-1 group overflow-auto max-h-[700px]', [
+              pre(classes: 'm-0 p-8 bg-transparent font-mono text-[13px] leading-relaxed whitespace-pre overflow-visible', [
+                code(
+                  classes: 'hljs language-dart block !bg-transparent !p-0 !m-0 whitespace-pre text-slate-300',
+                  key: ValueKey('dart-code-${_dartOutput.hashCode}'), // Force re-render on content change
+                  [
+                    .text(_dartOutput.isEmpty ? '// Your generated Dart classes will appear here...\n// Try pasting some JSON on the left!' : _dartOutput),
+                  ],
+                ),
+              ]),
+              if (_dartOutput.isNotEmpty)
+                const div(classes: 'absolute bottom-6 right-6 opacity-0 group-hover:opacity-100 transition-opacity', [
+                  div(classes: 'px-3 py-1.5 bg-slate-800/80 backdrop-blur text-slate-400 rounded-lg text-[10px] font-bold border border-slate-700', [.text('Dart Mappable v4.2.2')]),
+                ]),
             ]),
           ]),
         ]),
 
         // Footer
-        const div(classes: 'text-center mt-12 text-gray-500', [
-          p(classes: 'text-sm', [.text('Built with ❤️ using Jaspr, Tailwind CSS, and Dart Mappable')]),
+        const div(classes: 'text-center mt-16 space-y-3', [
+          p(classes: 'text-slate-400 text-[11px] font-bold uppercase tracking-[0.2em]', [.text('Powered by Jaspr & Tailwind')]),
+          div(classes: 'flex justify-center gap-6', [
+            a(classes: 'text-slate-400 hover:text-blue-600 transition-colors text-[11px] font-bold', href: 'https://pub.dev/packages/dart_mappable', [.text('Docs')]),
+            a(classes: 'text-slate-400 hover:text-blue-600 transition-colors text-[11px] font-bold', href: 'https://github.com/schultek/dart_mappable', [.text('GitHub')]),
+          ]),
         ]),
       ]),
     ]);
   }
 
-  void _copyToClipboard(String text) {
-    // For web, we can use the clipboard API
-    // This is a simple implementation - in a real app you'd handle this better
+  Component _featureBadge(String label, String colorClass) {
+    return div(classes: 'px-2.5 py-1 rounded-lg text-[10px] font-bold border $colorClass uppercase tracking-wider', [.text(label)]);
+  }
+
+  Component _iconButtonDark(String icon, String label, void Function() onPressed) {
+    return button(
+      classes: 'p-1.5 hover:bg-slate-100 rounded-lg transition-colors group relative outline-none',
+      onClick: onPressed,
+      attributes: {
+        'title': label,
+        'aria-label': label,
+      },
+      [
+        span(classes: 'text-base', [.text(icon)]),
+        // Tooltip
+        span(classes: 'absolute top-full left-1/2 -translate-x-1/2 mt-2 px-2 py-1 bg-slate-900 text-white text-[9px] rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 shadow-xl border border-slate-700', [
+          .text(label),
+        ]),
+      ],
+    );
+  }
+
+  void _loadExample() {
+    const example = {
+      "id": 1,
+      "name": "Leanne Graham",
+      "username": "Bret",
+      "email": "Sincere@april.biz",
+      "address": {
+        "street": "Kulas Light",
+        "suite": "Apt. 556",
+        "city": "Gwenborough",
+        "zipcode": "92998-3874",
+        "geo": {"lat": "-37.3159", "lng": "81.1496"},
+      },
+      "phone": "1-770-736-8031 x56442",
+      "website": "hildegard.org",
+      "company": {"name": "Romaguera-Crona", "catchPhrase": "Multi-layered client-server neural-net", "bs": "harness real-time e-markets"},
+      "tags": ["developer", "premium", "fast"],
+      "is_active": true,
+      "metadata": null,
+    };
+    _onJsonInputChanged(const JsonEncoder.withIndent('  ').convert(example));
+  }
+
+  void _loadComplexExample() {
+    const complexExample = {
+      "data": [
+        {"age": "12"},
+        {"name": "", "age": ""},
+        {"name": null, "age": ""},
+      ],
+    };
+    _onJsonInputChanged(const JsonEncoder.withIndent('  ').convert(complexExample));
+  }
+
+  Future<void> _copyToClipboard(String text, String type) async {
+    if (text.isEmpty || !kIsWeb) return;
+
+    final success = await ClipboardService.copyToClipboard(text);
+
+    if (success) {
+      if (type == 'json') {
+        setState(() => _isCopyingJson = true);
+        Future.delayed(const Duration(seconds: 2), () {
+          if (mounted) setState(() => _isCopyingJson = false);
+        });
+      } else {
+        setState(() => _isCopyingCode = true);
+        Future.delayed(const Duration(seconds: 2), () {
+          if (mounted) setState(() => _isCopyingCode = false);
+        });
+      }
+    }
+  }
+
+  void _downloadCode() {
+    if (_dartOutput.isEmpty || !kIsWeb) return;
+
+    final fileName = '${_mainClassName.toLowerCase()}.dart';
+    ClipboardService.downloadAsFile(_dartOutput, fileName);
   }
 
   void _formatJson() {
     if (_jsonInput.trim().isEmpty) return;
 
-    try {
-      final jsonData = jsonDecode(_jsonInput);
-      final formattedJson = const JsonEncoder.withIndent('  ').convert(jsonData);
+    final result = JsonFormatter.formatJson(_jsonInput);
+    if (result.isSuccess) {
       setState(() {
-        _jsonInput = formattedJson;
-        _convertJsonToDart();
+        _jsonInput = result.result;
+        _updateDartOutput();
       });
-    } catch (e) {
+    } else {
       setState(() {
-        _errorMessage = 'Invalid JSON: ${e.toString()}';
+        _errorMessage = result.error;
       });
     }
   }
@@ -481,28 +570,16 @@ class ConverterState extends State<Converter> {
   void _minifyJson() {
     if (_jsonInput.trim().isEmpty) return;
 
-    try {
-      final jsonData = jsonDecode(_jsonInput);
-      final minifiedJson = jsonEncode(jsonData);
+    final result = JsonFormatter.minifyJson(_jsonInput);
+    if (result.isSuccess) {
       setState(() {
-        _jsonInput = minifiedJson;
-        _convertJsonToDart();
+        _jsonInput = result.result;
+        _updateDartOutput();
       });
-    } catch (e) {
+    } else {
       setState(() {
-        _errorMessage = 'Invalid JSON: ${e.toString()}';
+        _errorMessage = result.error;
       });
-    }
-  }
-
-  String _getFormattedJson() {
-    if (_jsonInput.trim().isEmpty) return '';
-
-    try {
-      final jsonData = jsonDecode(_jsonInput);
-      return const JsonEncoder.withIndent('  ').convert(jsonData);
-    } catch (e) {
-      return _jsonInput; // Return original input if parsing fails
     }
   }
 }
