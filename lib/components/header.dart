@@ -40,7 +40,7 @@ class Header extends StatelessComponent {
               ),
 
             // Github link
-            const a(href: 'https://github.com/schultek/dart_mappable', classes: 'ml-4 px-5 py-2 bg-blue-50 text-blue-600 rounded-xl font-bold text-sm hover:bg-blue-100 transition-all', [.text('GitHub')]),
+            const a(href: 'https://github.com/Shreemanarjun/json_dart_mappable', classes: 'ml-4 px-5 py-2 bg-blue-50 text-blue-600 rounded-xl font-bold text-sm hover:bg-blue-100 transition-all', [.text('GitHub')]),
           ]),
 
           const div(classes: 'md:hidden', [

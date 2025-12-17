@@ -40,7 +40,7 @@ A state-of-the-art web application to transform JSON into type-safe Dart classes
 
 Build the highly optimized web assets:
 ```bash
-jaspr build --target web
+jaspr build
 ```
 The output will be located inside the `build/jaspr/` directory.
 

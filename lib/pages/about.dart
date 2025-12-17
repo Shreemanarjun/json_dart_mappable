@@ -51,9 +51,9 @@ class About extends StatelessComponent {
               'bg-emerald-50 text-emerald-600',
             ),
             _aboutCard(
-              '💙 Support Jaspr',
-              'If you like Jaspr, consider starring us on GitHub and sharing with your friends.',
-              'https://github.com/schultek/jaspr',
+              '⭐ Star on GitHub',
+              'If you find this tool useful, consider starring the project on GitHub and sharing it with others.',
+              'https://github.com/Shreemanarjun/json_dart_mappable',
               'Star on GitHub',
               'bg-pink-50 text-pink-600',
             ),

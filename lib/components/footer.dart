@@ -21,7 +21,7 @@ class Footer extends StatelessComponent {
               .text('The most powerful and user-friendly JSON to Dart converter built with Jaspr and Dart Mappable.'),
             ]),
             div(classes: 'flex space-x-6', [
-              _socialLink('GitHub', 'https://github.com/schultek/dart_mappable'),
+              _socialLink('GitHub', 'https://github.com/Shreemanarjun/json_dart_mappable'),
               _socialLink('Portfolio', 'https://shreeman.dev'),
               _socialLink('Documentation', 'https://pub.dev/packages/dart_mappable'),
             ]),
