@@ -5,7 +5,11 @@ void main() {
   group('JsonToDartConverter', () {
     test('converts simple JSON object', () {
       const jsonString = '{"name": "John", "age": 30}';
-      final result = JsonToDartConverter.convertJsonToDart(jsonString, 'User', 'none');
+      final result = JsonToDartConverter.convertJsonToDart(
+        jsonString: jsonString,
+        className: 'User',
+        nullabilityMode: 'none',
+      );
 
       expect(result.isSuccess, true);
       expect(result.code, contains('class User with UserMappable'));
@@ -15,7 +19,11 @@ void main() {
 
     test('handles nullability modes - none', () {
       const jsonString = '{"name": "John", "age": null}';
-      final result = JsonToDartConverter.convertJsonToDart(jsonString, 'User', 'none');
+      final result = JsonToDartConverter.convertJsonToDart(
+        jsonString: jsonString,
+        className: 'User',
+        nullabilityMode: 'none',
+      );
 
       expect(result.isSuccess, true);
       expect(result.code, contains('final String name;'));
@@ -24,7 +32,11 @@ void main() {
 
     test('handles nullability modes - all', () {
       const jsonString = '{"name": "John", "age": 30}';
-      final result = JsonToDartConverter.convertJsonToDart(jsonString, 'User', 'all');
+      final result = JsonToDartConverter.convertJsonToDart(
+        jsonString: jsonString,
+        className: 'User',
+        nullabilityMode: 'all',
+      );
 
       expect(result.isSuccess, true);
       expect(result.code, contains('final String? name;'));
@@ -33,7 +45,11 @@ void main() {
 
     test('handles nullability modes - smart', () {
       const jsonString = '{"name": "John", "nickname": null, "age": 30}';
-      final result = JsonToDartConverter.convertJsonToDart(jsonString, 'User', 'smart');
+      final result = JsonToDartConverter.convertJsonToDart(
+        jsonString: jsonString,
+        className: 'User',
+        nullabilityMode: 'smart',
+      );
 
       expect(result.isSuccess, true);
       expect(result.code, contains('final String name;')); // Not null
@@ -43,7 +59,11 @@ void main() {
 
     test('handles arrays', () {
       const jsonString = '{"items": [1, 2, 3]}';
-      final result = JsonToDartConverter.convertJsonToDart(jsonString, 'Container', 'none');
+      final result = JsonToDartConverter.convertJsonToDart(
+        jsonString: jsonString,
+        className: 'Container',
+        nullabilityMode: 'none',
+      );
 
       expect(result.isSuccess, true);
       expect(result.code, contains('final List<int> items;'));
@@ -59,7 +79,11 @@ void main() {
         ]
       }
       ''';
-      final result = JsonToDartConverter.convertJsonToDart(jsonString, 'Response', 'smart');
+      final result = JsonToDartConverter.convertJsonToDart(
+        jsonString: jsonString,
+        className: 'Response',
+        nullabilityMode: 'smart',
+      );
 
       expect(result.isSuccess, true);
       expect(result.code, contains('class Response with ResponseMappable'));
@@ -81,7 +105,11 @@ void main() {
         }
       }
       ''';
-      final result = JsonToDartConverter.convertJsonToDart(jsonString, 'ApiResponse', 'none');
+      final result = JsonToDartConverter.convertJsonToDart(
+        jsonString: jsonString,
+        className: 'ApiResponse',
+        nullabilityMode: 'none',
+      );
 
       expect(result.isSuccess, true);
       expect(result.code, contains('class ApiResponse with ApiResponseMappable'));
@@ -93,7 +121,11 @@ void main() {
 
     test('handles empty arrays', () {
       const jsonString = '{"items": []}';
-      final result = JsonToDartConverter.convertJsonToDart(jsonString, 'Container', 'none');
+      final result = JsonToDartConverter.convertJsonToDart(
+        jsonString: jsonString,
+        className: 'Container',
+        nullabilityMode: 'none',
+      );
 
       expect(result.isSuccess, true);
       expect(result.code, contains('final List<dynamic> items;'));
@@ -101,15 +133,23 @@ void main() {
 
     test('handles mixed types in arrays', () {
       const jsonString = '{"data": [1, "hello", true, null]}';
-      final result = JsonToDartConverter.convertJsonToDart(jsonString, 'Mixed', 'none');
+      final result = JsonToDartConverter.convertJsonToDart(
+        jsonString: jsonString,
+        className: 'Mixed',
+        nullabilityMode: 'none',
+      );
 
       expect(result.isSuccess, true);
-      expect(result.code, contains('final List<int> data;')); // Uses first item type
+      expect(result.code, contains('final List<dynamic> data;')); // Correctly identifies mixed types
     });
 
     test('handles field name sanitization', () {
       const jsonString = '{"user_name": "John", "user-age": 30, "123invalid": "test"}';
-      final result = JsonToDartConverter.convertJsonToDart(jsonString, 'User', 'none');
+      final result = JsonToDartConverter.convertJsonToDart(
+        jsonString: jsonString,
+        className: 'User',
+        nullabilityMode: 'none',
+      );
 
       expect(result.isSuccess, true);
       expect(result.code, contains('final String userName;'));
@@ -122,7 +162,11 @@ void main() {
 
     test('handles reserved keywords', () {
       const jsonString = '{"class": "A", "void": "B", "if": "C"}';
-      final result = JsonToDartConverter.convertJsonToDart(jsonString, 'Test', 'none');
+      final result = JsonToDartConverter.convertJsonToDart(
+        jsonString: jsonString,
+        className: 'Test',
+        nullabilityMode: 'none',
+      );
 
       expect(result.isSuccess, true);
       expect(result.code, contains('final String classValue;'));
@@ -132,7 +176,11 @@ void main() {
 
     test('handles empty JSON', () {
       const jsonString = '';
-      final result = JsonToDartConverter.convertJsonToDart(jsonString, 'Empty', 'none');
+      final result = JsonToDartConverter.convertJsonToDart(
+        jsonString: jsonString,
+        className: 'Empty',
+        nullabilityMode: 'none',
+      );
 
       expect(result.isSuccess, true);
       expect(result.code, isEmpty);
@@ -140,7 +188,11 @@ void main() {
 
     test('handles invalid JSON', () {
       const jsonString = '{"invalid": json}';
-      final result = JsonToDartConverter.convertJsonToDart(jsonString, 'Invalid', 'none');
+      final result = JsonToDartConverter.convertJsonToDart(
+        jsonString: jsonString,
+        className: 'Invalid',
+        nullabilityMode: 'none',
+      );
 
       expect(result.isSuccess, false);
       expect(result.error, contains('Invalid JSON'));
@@ -148,7 +200,11 @@ void main() {
 
     test('handles root level arrays', () {
       const jsonString = '[{"name": "John"}, {"name": "Jane"}]';
-      final result = JsonToDartConverter.convertJsonToDart(jsonString, 'Users', 'none');
+      final result = JsonToDartConverter.convertJsonToDart(
+        jsonString: jsonString,
+        className: 'Users',
+        nullabilityMode: 'none',
+      );
 
       expect(result.isSuccess, true);
       expect(result.code, contains('class Users with UsersMappable'));
@@ -171,7 +227,11 @@ void main() {
         ]
       }
       ''';
-      final result = JsonToDartConverter.convertJsonToDart(jsonString, 'Blog', 'smart');
+      final result = JsonToDartConverter.convertJsonToDart(
+        jsonString: jsonString,
+        className: 'Blog',
+        nullabilityMode: 'smart',
+      );
 
       expect(result.isSuccess, true);
       expect(result.code, contains('class Blog with BlogMappable'));
@@ -186,12 +246,12 @@ void main() {
     test('handles user reported scenario - inconsistent array items', () {
       const jsonString = '{"Data":[{"age":""},{"name":""}]}';
       final result = JsonToDartConverter.convertJsonToDart(
-        jsonString,
-        'MyModel',
-        'smart',
+        jsonString: jsonString,
+        className: 'MyModel',
+        nullabilityMode: 'smart',
+        alwaysIncludeMappableField: true,
         includeDefaultMethods: true,
         useRequiredConstructor: true,
-        alwaysIncludeMappableField: true,
       );
 
       expect(result.isSuccess, true);
@@ -206,7 +266,11 @@ void main() {
 
     test('smart nullability works with sanitized keys', () {
       const jsonString = '{"user_data": [{"user_id": "1"}, {"other": "2"}]}';
-      final result = JsonToDartConverter.convertJsonToDart(jsonString, 'MyModel', 'smart');
+      final result = JsonToDartConverter.convertJsonToDart(
+        jsonString: jsonString,
+        className: 'MyModel',
+        nullabilityMode: 'smart',
+      );
 
       expect(result.isSuccess, true);
       expect(result.code, contains('final String? userId;')); // Fixed: used to be non-nullable
@@ -214,10 +278,62 @@ void main() {
 
     test('smart nullability triggers on explicit null', () {
       const jsonString = '{"user_data": [{"user_id": "1"}, {"user_id": null}]}';
-      final result = JsonToDartConverter.convertJsonToDart(jsonString, 'MyModel', 'smart');
+      final result = JsonToDartConverter.convertJsonToDart(
+        jsonString: jsonString,
+        className: 'MyModel',
+        nullabilityMode: 'smart',
+      );
 
       expect(result.isSuccess, true);
       expect(result.code, contains('final String? userId;')); // Nullable because of explicit null
+    });
+
+    test('detects double type', () {
+      const jsonString = '{"price": 10.5}';
+      final result = JsonToDartConverter.convertJsonToDart(
+        jsonString: jsonString,
+        className: 'Product',
+        nullabilityMode: 'none',
+      );
+
+      expect(result.isSuccess, true);
+      expect(result.code, contains('final double price;'));
+    });
+
+    test('detects num type for mixed int and double in array', () {
+      const jsonString = '{"prices": [10, 10.5]}';
+      final result = JsonToDartConverter.convertJsonToDart(
+        jsonString: jsonString,
+        className: 'Product',
+        nullabilityMode: 'none',
+      );
+
+      expect(result.isSuccess, true);
+      expect(result.code, contains('final List<num> prices;'));
+    });
+
+    test('detects num type for mixed int and double in objects array', () {
+      const jsonString = '{"data": [{"val": 10}, {"val": 10.5}]}';
+      final result = JsonToDartConverter.convertJsonToDart(
+        jsonString: jsonString,
+        className: 'Response',
+        nullabilityMode: 'none',
+      );
+
+      expect(result.isSuccess, true);
+      expect(result.code, contains('final num val;'));
+    });
+
+    test('handles nullability modes - all - nested objects', () {
+      const jsonString = '{"user": {"name": "John"}}';
+      final result = JsonToDartConverter.convertJsonToDart(
+        jsonString: jsonString,
+        className: 'Response',
+        nullabilityMode: 'all',
+      );
+
+      expect(result.isSuccess, true);
+      expect(result.code, contains('final User? user;'));
     });
   });
 }

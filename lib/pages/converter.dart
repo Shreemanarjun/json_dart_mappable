@@ -81,9 +81,9 @@ class ConverterState extends State<Converter> {
     print('🎨 UI: _updateDartOutput called with className="$_mainClassName", nullabilityMode="$_nullabilityMode"');
 
     final result = JsonToDartConverter.convertJsonToDart(
-      _jsonInput,
-      _mainClassName,
-      _nullabilityMode,
+      jsonString: _jsonInput,
+      className: _mainClassName,
+      nullabilityMode: _nullabilityMode,
       alwaysIncludeMappableField: _alwaysIncludeMappableField,
       useObjectInsteadOfDynamic: _useObjectInsteadOfDynamic,
       includeDefaultMethods: _includeDefaultMethods,

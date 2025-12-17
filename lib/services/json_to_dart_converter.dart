@@ -73,10 +73,10 @@ class JsonToDartConverter {
   };
 
   /// Converts JSON string to Dart Mappable class code
-  static ConversionResult convertJsonToDart(
-    String jsonString,
-    String className,
-    String nullabilityMode, {
+  static ConversionResult convertJsonToDart({
+    required String jsonString,
+    required String className,
+    required String nullabilityMode,
     bool alwaysIncludeMappableField = false,
     bool useObjectInsteadOfDynamic = false,
     bool includeDefaultMethods = false,
@@ -264,11 +264,16 @@ class JsonToDartConverter {
     bool includeDefaultMethods = false,
     bool useRequiredConstructor = false,
     bool isRootClass = false,
+    Map<String, String>? extraFieldTypeOverrides,
   }) {
     // Collect all nested classes first
     final nestedClassBuffers = <StringBuffer>[];
     final nestedClasses = <String>[];
     final fieldTypeOverrides = <String, String>{}; // fieldName -> actualType
+
+    if (extraFieldTypeOverrides != null) {
+      fieldTypeOverrides.addAll(extraFieldTypeOverrides);
+    }
 
     map.forEach((key, value) {
       if (value is Map<String, dynamic>) {
@@ -308,6 +313,8 @@ class JsonToDartConverter {
 
           // Create merged fields from all array items
           final mergedFields = <String, dynamic>{};
+          final nestedOverrides = <String, String>{};
+
           for (final item in value) {
             if (item is Map<String, dynamic>) {
               // For merged fields, we want to preserve the types but handle nulls specially
@@ -318,6 +325,11 @@ class JsonToDartConverter {
                 } else if (mergedFields[key] == null && itemValue != null) {
                   // Replace null with actual value to get better type inference
                   mergedFields[key] = itemValue;
+                } else if (mergedFields[key] != null && itemValue != null) {
+                  final existing = mergedFields[key];
+                  if ((existing is int && itemValue is double) || (existing is double && itemValue is int) || nestedOverrides[key] == 'num') {
+                    nestedOverrides[key] = 'num';
+                  }
                 }
                 // If both are non-null or both are null, keep the existing value
               });
@@ -335,6 +347,7 @@ class JsonToDartConverter {
             includeDefaultMethods: includeDefaultMethods,
             useRequiredConstructor: useRequiredConstructor,
             isRootClass: false,
+            extraFieldTypeOverrides: nestedOverrides,
           );
           nestedClassBuffers.add(nestedBuffer);
         }
@@ -351,7 +364,12 @@ class JsonToDartConverter {
 
     map.forEach((key, value) {
       final fieldName = _sanitizeFieldName(key);
-      final fieldType = fieldTypeOverrides[key] ?? _getDartType(value, key, nullabilityAnalysis, nullabilityMode, useObjectInsteadOfDynamic);
+      var fieldType = fieldTypeOverrides[key] ?? _getDartType(value, key, nullabilityAnalysis, nullabilityMode, useObjectInsteadOfDynamic);
+
+      // If it was explicitly overridden (e.g. num or nested class), we still need to apply nullability
+      if (fieldTypeOverrides.containsKey(key)) {
+        fieldType = _applyNullability(fieldType, key, nullabilityAnalysis, nullabilityMode);
+      }
 
       if (alwaysIncludeMappableField || fieldName != key) {
         fields.add('  @MappableField(key: \'$key\')');
@@ -509,10 +527,46 @@ class JsonToDartConverter {
       if (value.isEmpty) {
         baseType = 'List<${useObjectInsteadOfDynamic ? 'Object' : 'dynamic'}>';
       } else {
-        // Find first non-null item to determine type
-        final firstNonNull = value.firstWhere((item) => item != null, orElse: () => null);
-        final itemType = _getDartType(firstNonNull, originalKey, nullabilityAnalysis, nullabilityMode, useObjectInsteadOfDynamic);
-        baseType = 'List<$itemType>';
+        // Analyze all items to find a common type
+        String? commonType;
+        bool hasNull = false;
+
+        for (final item in value) {
+          if (item == null) {
+            hasNull = true;
+            continue;
+          }
+
+          final itemType = _getDartType(item, originalKey, nullabilityAnalysis, 'none', useObjectInsteadOfDynamic);
+
+          if (commonType == null) {
+            commonType = itemType;
+          } else if (commonType != itemType) {
+            // Check for int/double mix -> num
+            if ((commonType == 'int' && itemType == 'double') || (commonType == 'double' && itemType == 'int')) {
+              commonType = 'num';
+            } else if (commonType == 'num' && (itemType == 'int' || itemType == 'double')) {
+              // Stay num
+            } else if (itemType == 'num' && (commonType == 'int' || commonType == 'double')) {
+              commonType = 'num';
+            } else {
+              // Incompatible types
+              commonType = useObjectInsteadOfDynamic ? 'Object' : 'dynamic';
+              break;
+            }
+          }
+        }
+
+        commonType ??= useObjectInsteadOfDynamic ? 'Object' : 'dynamic';
+
+        // Apply nullability to the item type if needed
+        if (nullabilityMode == 'all' || (nullabilityMode == 'smart' && hasNull)) {
+          if (commonType != 'dynamic' && commonType != 'Object' && !commonType.endsWith('?')) {
+            commonType = '$commonType?';
+          }
+        }
+
+        baseType = 'List<$commonType>';
       }
     } else if (value is Map<String, dynamic>) {
       final className = '${fieldName[0].toUpperCase()}${fieldName.substring(1)}';
@@ -522,13 +576,26 @@ class JsonToDartConverter {
     }
 
     // Apply nullability based on mode
+    return _applyNullability(baseType, originalKey, nullabilityAnalysis, nullabilityMode);
+  }
+
+  static String _applyNullability(
+    String baseType,
+    String originalKey,
+    Map<String, bool>? nullabilityAnalysis,
+    String nullabilityMode,
+  ) {
+    if (baseType == 'dynamic' || baseType == 'Object' || baseType.endsWith('?')) {
+      return baseType;
+    }
+
     switch (nullabilityMode) {
       case 'all':
-        return baseType == 'dynamic' || baseType == 'Object' ? baseType : '$baseType?';
+        return '$baseType?';
       case 'smart':
         // For smart mode, check if this field should be nullable based on analysis
         if (nullabilityAnalysis != null && nullabilityAnalysis[originalKey] == true) {
-          return baseType == 'dynamic' || baseType == 'Object' ? baseType : '$baseType?';
+          return '$baseType?';
         }
         return baseType;
       case 'none':
