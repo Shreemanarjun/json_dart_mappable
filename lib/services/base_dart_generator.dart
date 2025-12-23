@@ -265,7 +265,7 @@ abstract class BaseDartGenerator implements CodeGenerator {
     Map<String, bool>? nullabilityAnalysis,
     String nullabilityMode,
   ) {
-    if (baseType == 'dynamic' || baseType == 'Object' || baseType.endsWith('?')) {
+    if (baseType == 'dynamic' || baseType.endsWith('?')) {
       return baseType;
     }
 

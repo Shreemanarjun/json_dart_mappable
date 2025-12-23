@@ -335,5 +335,41 @@ void main() {
       expect(result.isSuccess, true);
       expect(result.code, contains('final User? user;'));
     });
+
+    test('handles smart nullability with null value and Object type', () {
+      const jsonString = '{"name": null}';
+      final result = JsonToDartConverter.convertJsonToDart(
+        jsonString: jsonString,
+        className: 'MyModel',
+        nullabilityMode: 'smart',
+        alwaysIncludeMappableField: true,
+        useObjectInsteadOfDynamic: true,
+        includeDefaultMethods: true,
+        useRequiredConstructor: true,
+      );
+
+      expect(result.isSuccess, true);
+      expect(result.code, contains('final Object? name;'));
+      expect(result.code, contains('@MappableField(key: \'name\')'));
+      expect(result.code, contains('factory MyModel.fromMap'));
+    });
+    test('handles smart nullability with null value and Object type with recursive types', () {
+      const jsonString = '{"data":[{"age": 12},{"age": null,"name":null}]}';
+      final result = JsonToDartConverter.convertJsonToDart(
+        jsonString: jsonString,
+        className: 'MyModel',
+        nullabilityMode: 'smart',
+        alwaysIncludeMappableField: true,
+        useObjectInsteadOfDynamic: true,
+        includeDefaultMethods: true,
+        useRequiredConstructor: true,
+      );
+
+      expect(result.isSuccess, true);
+      print(result.code);
+      expect(result.code, contains('final Object? name;'));
+      expect(result.code, contains('@MappableField(key: \'name\')'));
+      expect(result.code, contains('factory MyModel.fromMap'));
+    });
   });
 }
