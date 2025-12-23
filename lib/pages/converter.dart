@@ -29,6 +29,8 @@ class ConverterState extends State<Converter> {
   bool _useObjectInsteadOfDynamic = false; // Use Object instead of dynamic for unknown types
   bool _includeDefaultMethods = true; // Include fromMap, fromJson, ensureInitialized methods
   bool _useRequiredConstructor = true; // Use required constructor parameters instead of defaults
+  bool _useDartMappable = true; // Use dart_mappable or plain Dart
+  String _renamesInput = ''; // Text input for renames
 
   void _onJsonInputChanged(String value) {
     setState(() {
@@ -88,6 +90,8 @@ class ConverterState extends State<Converter> {
       useObjectInsteadOfDynamic: _useObjectInsteadOfDynamic,
       includeDefaultMethods: _includeDefaultMethods,
       useRequiredConstructor: _useRequiredConstructor,
+      useDartMappable: _useDartMappable,
+      classRenames: _parseRenames(),
     );
 
     print('🎨 UI: Converter returned ${result.code.length} chars of code, error: "${result.error}"');
@@ -98,6 +102,30 @@ class ConverterState extends State<Converter> {
     });
 
     print('🎨 UI: State updated. _dartOutput length: ${_dartOutput.length}, _errorMessage: "$_errorMessage"');
+  }
+
+  Map<String, String> _parseRenames() {
+    final renames = <String, String>{};
+    if (_renamesInput.isEmpty) return renames;
+
+    for (final line in _renamesInput.split('\n')) {
+      final parts = line.split(':');
+      if (parts.length >= 2) {
+        final key = parts[0].trim();
+        final value = parts.sublist(1).join(':').trim();
+        if (key.isNotEmpty && value.isNotEmpty) {
+          renames[key] = value;
+        }
+      }
+    }
+    return renames;
+  }
+
+  void _onRenamesChanged(String value) {
+    setState(() {
+      _renamesInput = value;
+      _updateDartOutput();
+    });
   }
 
   void _runHighlight() {
@@ -236,7 +264,7 @@ class ConverterState extends State<Converter> {
                     }),
                   ),
                   _modernToggle(
-                    'Strict Types',
+                    'Use Object?',
                     'Use Object instead of dynamic for unknown types',
                     _useObjectInsteadOfDynamic,
                     (v) => setState(() {
@@ -261,6 +289,45 @@ class ConverterState extends State<Converter> {
                       _useRequiredConstructor = v;
                       _updateDartOutput();
                     }),
+                  ),
+                ]),
+
+                // Mode Selection
+                div(classes: 'pt-4 border-t border-slate-100 space-y-4', [
+                  const h3(classes: 'text-xs font-bold text-slate-900', [.text('Output Mode')]),
+                  div(classes: 'flex gap-2', [
+                    button(
+                      classes:
+                          'flex-1 px-4 py-2 rounded-xl text-xs font-bold transition-all border ${_useDartMappable ? 'bg-blue-600 text-white border-blue-600 shadow-lg shadow-blue-500/30' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'}',
+                      onClick: () => setState(() {
+                        _useDartMappable = true;
+                        _updateDartOutput();
+                      }),
+                      const [.text('Dart Mappable')],
+                    ),
+                    button(
+                      classes:
+                          'flex-1 px-4 py-2 rounded-xl text-xs font-bold transition-all border ${!_useDartMappable ? 'bg-blue-600 text-white border-blue-600 shadow-lg shadow-blue-500/30' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'}',
+                      onClick: () => setState(() {
+                        _useDartMappable = false;
+                        _updateDartOutput();
+                      }),
+                      const [.text('Plain Dart')],
+                    ),
+                  ]),
+                ]),
+
+                // Class Renaming
+                div(classes: 'pt-4 border-t border-slate-100 space-y-2', [
+                  const div(classes: 'flex justify-between items-center', [
+                    h3(classes: 'text-xs font-bold text-slate-900', [.text('Class Renaming')]),
+                    span(classes: 'text-[10px] text-slate-400', [.text('Original: NewName')]),
+                  ]),
+                  textarea(
+                    classes: 'w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono text-slate-600 outline-none focus:border-blue-500 transition-all h-24 resize-none',
+                    placeholder: 'User: Person\nPostItem: Article',
+                    onInput: _onRenamesChanged,
+                    const [],
                   ),
                 ]),
               ]),

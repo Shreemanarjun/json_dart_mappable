@@ -1,78 +1,16 @@
 import 'dart:convert';
 
-/// Service for converting JSON to Dart Mappable classes
-class JsonToDartConverter {
-  static const _reservedKeywords = {
-    'abstract',
-    'as',
-    'assert',
-    'async',
-    'await',
-    'break',
-    'case',
-    'catch',
-    'class',
-    'const',
-    'continue',
-    'covariant',
-    'default',
-    'deferred',
-    'do',
-    'dynamic',
-    'else',
-    'enum',
-    'export',
-    'extends',
-    'extension',
-    'external',
-    'factory',
-    'false',
-    'final',
-    'finally',
-    'for',
-    'function',
-    'get',
-    'hide',
-    'if',
-    'implements',
-    'import',
-    'in',
-    'interface',
-    'is',
-    'late',
-    'library',
-    'mixin',
-    'native',
-    'new',
-    'null',
-    'on',
-    'operator',
-    'part',
-    'patch',
-    'priority',
-    'private',
-    'protected',
-    'rethrow',
-    'return',
-    'set',
-    'show',
-    'static',
-    'super',
-    'switch',
-    'sync',
-    'this',
-    'throw',
-    'true',
-    'try',
-    'typedef',
-    'var',
-    'void',
-    'while',
-    'with',
-    'yield',
-  };
+import 'code_generator_interface.dart';
+import 'code_generators.dart';
 
+/// Service for converting JSON to Dart Mappable classes
+///
+/// This class now acts as an adapter to the plugin system while maintaining
+/// backward compatibility with the existing API.
+class JsonToDartConverter {
   /// Converts JSON string to Dart Mappable class code
+  ///
+  /// This is now an adapter that uses the plugin system internally
   static ConversionResult convertJsonToDart({
     required String jsonString,
     required String className,
@@ -81,6 +19,8 @@ class JsonToDartConverter {
     bool useObjectInsteadOfDynamic = false,
     bool includeDefaultMethods = false,
     bool useRequiredConstructor = false,
+    Map<String, String>? classRenames,
+    bool useDartMappable = true,
   }) {
     if (jsonString.trim().isEmpty) {
       return ConversionResult.success('', '');
@@ -89,519 +29,56 @@ class JsonToDartConverter {
     try {
       final jsonData = jsonDecode(jsonString);
 
-      // Analyze nullability for smart mode
-      final nullabilityAnalysis = nullabilityMode == 'smart' ? _analyzeNullability(jsonData) : null;
+      // Use the plugin system
+      final generator = useDartMappable ? _getDartMappableGenerator() : _getPlainDartGenerator();
 
-      final dartClass = _generateDartClass(
-        jsonData,
-        className,
-        nullabilityAnalysis,
-        nullabilityMode,
+      final options = _createOptions(
+        nullabilityMode: nullabilityMode,
         alwaysIncludeMappableField: alwaysIncludeMappableField,
         useObjectInsteadOfDynamic: useObjectInsteadOfDynamic,
         includeDefaultMethods: includeDefaultMethods,
         useRequiredConstructor: useRequiredConstructor,
+        classRenames: classRenames,
       );
-      return ConversionResult.success(dartClass, '');
+
+      final code = generator.generate(
+        json: jsonData,
+        className: className,
+        options: options,
+      );
+
+      return ConversionResult.success(code, '');
     } catch (e) {
       return ConversionResult.error('', 'Invalid JSON: ${e.toString()}');
     }
   }
 
-  static Map<String, bool> _analyzeNullability(dynamic json, [String path = '']) {
-    final analysis = <String, bool>{};
-
-    if (json is Map<String, dynamic>) {
-      json.forEach((key, value) {
-        final fieldPath = path.isEmpty ? key : '$path.$key';
-
-        // A field should be nullable if it's null (not if it's an empty string)
-        bool shouldBeNullable = value == null;
-
-        if (value is Map<String, dynamic>) {
-          analysis.addAll(_analyzeNullability(value, fieldPath));
-        } else if (value is List && value.isNotEmpty) {
-          // For arrays, analyze all items to see field nullability within items
-          final arrayAnalysis = _analyzeArrayNullability(value, key, fieldPath);
-          analysis.addAll(arrayAnalysis);
-
-          // The array field itself is only nullable if the value is null (not if items are nullable)
-          // shouldBeNullable remains false for array fields
-        }
-
-        analysis[fieldPath] = shouldBeNullable;
-      });
-    } else if (json is List && json.isNotEmpty) {
-      // For root level arrays, analyze the structure
-      if (json.first is Map<String, dynamic>) {
-        analysis.addAll(_analyzeArrayNullability(json, '', path));
-      }
-    }
-
-    return analysis;
+  static CodeGenerator _getDartMappableGenerator() {
+    CodeGeneratorRegistry.initializeDefaults();
+    return CodeGeneratorRegistry.get('dart_mappable')!;
   }
 
-  static Map<String, bool> _analyzeArrayNullability(List array, String fieldName, String path) {
-    final analysis = <String, bool>{};
-    final allKeys = <String>{};
-
-    // Collect all possible keys from all objects in the array
-    for (final item in array) {
-      if (item is Map<String, dynamic>) {
-        allKeys.addAll(item.keys);
-      }
-    }
-
-    // For each key, check if it's ever missing, null, or empty across all items
-    for (final key in allKeys) {
-      final fieldPath = path.isEmpty ? key : '$path.$key';
-      bool shouldBeNullable = false;
-
-      for (final item in array) {
-        if (item is Map<String, dynamic>) {
-          if (!item.containsKey(key)) {
-            // Field is missing - should be nullable
-            shouldBeNullable = true;
-            break;
-          } else {
-            final value = item[key];
-            if (value == null) {
-              // Field is null - should be nullable
-              shouldBeNullable = true;
-              break;
-            }
-          }
-        }
-      }
-
-      analysis[fieldPath] = shouldBeNullable;
-
-      // Also analyze nested structures if they exist
-      final firstNonNullValue = array.firstWhere(
-        (item) => item is Map<String, dynamic> && item.containsKey(key) && item[key] != null,
-        orElse: () => null,
-      );
-
-      if (firstNonNullValue is Map<String, dynamic> && firstNonNullValue[key] is Map<String, dynamic>) {
-        analysis.addAll(_analyzeNullability(firstNonNullValue[key], fieldPath));
-      } else if (firstNonNullValue is Map<String, dynamic> && firstNonNullValue[key] is List && (firstNonNullValue[key] as List).isNotEmpty) {
-        analysis.addAll(_analyzeArrayNullability(firstNonNullValue[key] as List, key, fieldPath));
-      }
-    }
-
-    return analysis;
+  static CodeGenerator _getPlainDartGenerator() {
+    CodeGeneratorRegistry.initializeDefaults();
+    return CodeGeneratorRegistry.get('plain_dart')!;
   }
 
-  static String _generateDartClass(
-    dynamic json,
-    String className,
-    Map<String, bool>? nullabilityAnalysis,
-    String nullabilityMode, {
-    bool alwaysIncludeMappableField = false,
-    bool useObjectInsteadOfDynamic = false,
-    bool includeDefaultMethods = false,
-    bool useRequiredConstructor = false,
+  static CodeGeneratorOptions _createOptions({
+    required String nullabilityMode,
+    required bool alwaysIncludeMappableField,
+    required bool useObjectInsteadOfDynamic,
+    required bool includeDefaultMethods,
+    required bool useRequiredConstructor,
+    Map<String, String>? classRenames,
   }) {
-    final buffer = StringBuffer();
-
-    buffer.writeln("import 'package:dart_mappable/dart_mappable.dart';");
-    buffer.writeln();
-    buffer.writeln('part \'${className.toLowerCase()}.mapper.dart\';');
-    buffer.writeln();
-
-    if (json is Map<String, dynamic>) {
-      _generateClassFromMap(
-        buffer,
-        json,
-        className,
-        nullabilityAnalysis,
-        nullabilityMode,
-        alwaysIncludeMappableField,
-        useObjectInsteadOfDynamic: useObjectInsteadOfDynamic,
-        includeDefaultMethods: includeDefaultMethods,
-        useRequiredConstructor: useRequiredConstructor,
-        isRootClass: true,
-      );
-    } else if (json is List) {
-      if (json.isNotEmpty) {
-        _generateClassFromList(
-          buffer,
-          json,
-          className,
-          nullabilityAnalysis,
-          nullabilityMode,
-          alwaysIncludeMappableField,
-          useObjectInsteadOfDynamic: useObjectInsteadOfDynamic,
-          includeDefaultMethods: includeDefaultMethods,
-          useRequiredConstructor: useRequiredConstructor,
-          isRootClass: true,
-        );
-      } else {
-        buffer.writeln('@MappableClass()');
-        buffer.writeln('class $className with ${className}Mappable {');
-        buffer.writeln('  const $className();');
-        buffer.writeln('}');
-      }
-    } else {
-      buffer.writeln('@MappableClass()');
-      buffer.writeln('class $className with ${className}Mappable {');
-      buffer.writeln('  final dynamic value;');
-      buffer.writeln('  const $className(this.value);');
-      buffer.writeln('}');
-    }
-
-    return buffer.toString();
-  }
-
-  static void _generateClassFromMap(
-    StringBuffer buffer,
-    Map<String, dynamic> map,
-    String className,
-    Map<String, bool>? nullabilityAnalysis,
-    String nullabilityMode,
-    bool alwaysIncludeMappableField, {
-    bool useObjectInsteadOfDynamic = false,
-    bool includeDefaultMethods = false,
-    bool useRequiredConstructor = false,
-    bool isRootClass = false,
-    Map<String, String>? extraFieldTypeOverrides,
-  }) {
-    // Collect all nested classes first
-    final nestedClassBuffers = <StringBuffer>[];
-    final nestedClasses = <String>[];
-    final fieldTypeOverrides = <String, String>{}; // fieldName -> actualType
-
-    if (extraFieldTypeOverrides != null) {
-      fieldTypeOverrides.addAll(extraFieldTypeOverrides);
-    }
-
-    map.forEach((key, value) {
-      if (value is Map<String, dynamic>) {
-        final nestedClassName = '${_sanitizeFieldName(key)[0].toUpperCase()}${_sanitizeFieldName(key).substring(1)}';
-        if (!nestedClasses.contains(nestedClassName)) {
-          nestedClasses.add(nestedClassName);
-          final nestedBuffer = StringBuffer();
-          _generateClassFromMap(
-            nestedBuffer,
-            value,
-            nestedClassName,
-            nullabilityAnalysis,
-            nullabilityMode,
-            alwaysIncludeMappableField,
-            useObjectInsteadOfDynamic: useObjectInsteadOfDynamic,
-            includeDefaultMethods: includeDefaultMethods,
-            useRequiredConstructor: useRequiredConstructor,
-            isRootClass: false,
-          );
-          nestedClassBuffers.add(nestedBuffer);
-        }
-        fieldTypeOverrides[key] = nestedClassName;
-      } else if (value is List && value.isNotEmpty && value.first is Map<String, dynamic>) {
-        final nestedClassName = '${_sanitizeFieldName(key)[0].toUpperCase()}${_sanitizeFieldName(key).substring(1)}Item';
-        if (!nestedClasses.contains(nestedClassName)) {
-          nestedClasses.add(nestedClassName);
-          final nestedBuffer = StringBuffer();
-
-          // Filter nullability analysis for this nested class
-          final filteredAnalysis = <String, bool>{};
-          final prefix = '$key.';
-          nullabilityAnalysis?.forEach((path, isNullable) {
-            if (path.startsWith(prefix)) {
-              filteredAnalysis[path.substring(prefix.length)] = isNullable;
-            }
-          });
-
-          // Create merged fields from all array items
-          final mergedFields = <String, dynamic>{};
-          final nestedOverrides = <String, String>{};
-
-          for (final item in value) {
-            if (item is Map<String, dynamic>) {
-              // For merged fields, we want to preserve the types but handle nulls specially
-              item.forEach((key, itemValue) {
-                if (!mergedFields.containsKey(key)) {
-                  // First time seeing this field
-                  mergedFields[key] = itemValue;
-                } else if (mergedFields[key] == null && itemValue != null) {
-                  // Replace null with actual value to get better type inference
-                  mergedFields[key] = itemValue;
-                } else if (mergedFields[key] != null && itemValue != null) {
-                  final existing = mergedFields[key];
-                  if ((existing is int && itemValue is double) || (existing is double && itemValue is int) || nestedOverrides[key] == 'num') {
-                    nestedOverrides[key] = 'num';
-                  }
-                }
-                // If both are non-null or both are null, keep the existing value
-              });
-            }
-          }
-
-          _generateClassFromMap(
-            nestedBuffer,
-            mergedFields,
-            nestedClassName,
-            filteredAnalysis,
-            nullabilityMode,
-            alwaysIncludeMappableField,
-            useObjectInsteadOfDynamic: useObjectInsteadOfDynamic,
-            includeDefaultMethods: includeDefaultMethods,
-            useRequiredConstructor: useRequiredConstructor,
-            isRootClass: false,
-            extraFieldTypeOverrides: nestedOverrides,
-          );
-          nestedClassBuffers.add(nestedBuffer);
-        }
-        fieldTypeOverrides[key] = 'List<$nestedClassName>';
-      }
-    });
-
-    // Generate the main class first
-    buffer.writeln('@MappableClass()');
-    buffer.writeln('class $className with ${className}Mappable {');
-
-    final fields = <String>[];
-    final constructorParams = <String>[];
-
-    map.forEach((key, value) {
-      final fieldName = _sanitizeFieldName(key);
-      var fieldType = fieldTypeOverrides[key] ?? _getDartType(value, key, nullabilityAnalysis, nullabilityMode, useObjectInsteadOfDynamic);
-
-      // If it was explicitly overridden (e.g. num or nested class), we still need to apply nullability
-      if (fieldTypeOverrides.containsKey(key)) {
-        fieldType = _applyNullability(fieldType, key, nullabilityAnalysis, nullabilityMode);
-      }
-
-      if (alwaysIncludeMappableField || fieldName != key) {
-        fields.add('  @MappableField(key: \'$key\')');
-      }
-      fields.add('  final $fieldType $fieldName;');
-
-      if (useRequiredConstructor) {
-        constructorParams.add('    required this.$fieldName,');
-      } else {
-        constructorParams.add('    this.$fieldName,');
-      }
-    });
-
-    if (useRequiredConstructor) {
-      buffer.writeln('  const $className({');
-      buffer.writeln(constructorParams.join('\n'));
-      buffer.writeln('  });');
-    } else {
-      buffer.writeln('  const $className(');
-      buffer.writeln(constructorParams.join('\n'));
-      buffer.writeln('  );');
-    }
-    buffer.writeln();
-
-    fields.forEach(buffer.writeln);
-
-    // Add default methods if requested
-    if (includeDefaultMethods) {
-      buffer.writeln();
-      buffer.writeln('  factory $className.fromMap(Map<String, dynamic> map) => ${className}Mapper.fromMap(map);');
-      buffer.writeln();
-      buffer.writeln('  factory $className.fromJson(String json) => ${className}Mapper.fromJson(json);');
-      buffer.writeln();
-      buffer.writeln('  static ${className}Mapper ensureInitialized() => ${className}Mapper.ensureInitialized();');
-    }
-
-    buffer.writeln('}');
-
-    // Add all nested classes after the main class
-    for (final nestedBuffer in nestedClassBuffers) {
-      buffer.writeln();
-      buffer.write(nestedBuffer);
-    }
-  }
-
-  static void _generateClassFromList(
-    StringBuffer buffer,
-    List list,
-    String className,
-    Map<String, bool>? nullabilityAnalysis,
-    String nullabilityMode,
-    bool alwaysIncludeMappableField, {
-    bool useObjectInsteadOfDynamic = false,
-    bool includeDefaultMethods = false,
-    bool useRequiredConstructor = false,
-    bool isRootClass = false,
-  }) {
-    final itemClassName = '${className}Item';
-
-    // Generate the item class based on all items in the array, not just the first one
-    if (list.isNotEmpty) {
-      // Create a merged map of all fields from all items
-      final mergedFields = <String, dynamic>{};
-
-      for (final item in list) {
-        if (item is Map<String, dynamic>) {
-          mergedFields.addAll(item);
-        }
-      }
-
-      if (mergedFields.isNotEmpty) {
-        // For array item classes, we need to filter the nullability analysis
-        // The className here is like "ResponseItem", but we need to find the field name
-        // that this array belongs to. Since this is called from _generateClassFromList,
-        // and the className is like "Response", we need to find the field that contains this array.
-
-        // Actually, since this is for root-level arrays, the path prefix would be empty
-        // But for nested arrays, we need the field name. For now, let's assume the
-        // nullability analysis already has the correct paths for the array items.
-
-        _generateClassFromMap(
-          buffer,
-          mergedFields,
-          itemClassName,
-          nullabilityAnalysis,
-          nullabilityMode,
-          alwaysIncludeMappableField,
-          useObjectInsteadOfDynamic: useObjectInsteadOfDynamic,
-          includeDefaultMethods: includeDefaultMethods,
-          useRequiredConstructor: useRequiredConstructor,
-          isRootClass: false,
-        );
-        buffer.writeln();
-      }
-    }
-
-    buffer.writeln('@MappableClass()');
-    buffer.writeln('class $className with ${className}Mappable {');
-    buffer.writeln('  const $className(');
-    buffer.writeln('    this.items,');
-    buffer.writeln('  );');
-    buffer.writeln();
-    buffer.writeln('  final List<${list.isNotEmpty && list.any((item) => item is Map) ? itemClassName : 'dynamic'}> items;');
-    buffer.writeln('}');
-  }
-
-  static String _sanitizeFieldName(String fieldName) {
-    // Convert to camelCase and ensure it's a valid Dart identifier
-    var sanitized = fieldName.replaceAll(RegExp(r'[^a-zA-Z0-9_]'), '_');
-
-    // Ensure it doesn't start with a number
-    if (RegExp(r'^[0-9]').hasMatch(sanitized)) {
-      sanitized = 'n$sanitized';
-    }
-
-    if (sanitized.isEmpty) return 'field';
-
-    // Convert to camelCase
-    final parts = sanitized.split('_').where((part) => part.isNotEmpty).toList();
-    if (parts.isEmpty) return 'field';
-
-    var result = parts.first.toLowerCase();
-    for (var i = 1; i < parts.length; i++) {
-      result += parts[i][0].toUpperCase() + parts[i].substring(1).toLowerCase();
-    }
-
-    // Check for reserved keywords
-    if (_reservedKeywords.contains(result)) {
-      result = '${result}Value';
-    }
-
-    return result;
-  }
-
-  static String _getDartType(
-    dynamic value,
-    String originalKey,
-    Map<String, bool>? nullabilityAnalysis,
-    String nullabilityMode,
-    bool useObjectInsteadOfDynamic,
-  ) {
-    final fieldName = _sanitizeFieldName(originalKey);
-    String baseType;
-    if (value == null) {
-      baseType = useObjectInsteadOfDynamic ? 'Object' : 'dynamic';
-    } else if (value is String) {
-      baseType = 'String';
-    } else if (value is int) {
-      baseType = 'int';
-    } else if (value is double) {
-      baseType = 'double';
-    } else if (value is bool) {
-      baseType = 'bool';
-    } else if (value is List) {
-      if (value.isEmpty) {
-        baseType = 'List<${useObjectInsteadOfDynamic ? 'Object' : 'dynamic'}>';
-      } else {
-        // Analyze all items to find a common type
-        String? commonType;
-        bool hasNull = false;
-
-        for (final item in value) {
-          if (item == null) {
-            hasNull = true;
-            continue;
-          }
-
-          final itemType = _getDartType(item, originalKey, nullabilityAnalysis, 'none', useObjectInsteadOfDynamic);
-
-          if (commonType == null) {
-            commonType = itemType;
-          } else if (commonType != itemType) {
-            // Check for int/double mix -> num
-            if ((commonType == 'int' && itemType == 'double') || (commonType == 'double' && itemType == 'int')) {
-              commonType = 'num';
-            } else if (commonType == 'num' && (itemType == 'int' || itemType == 'double')) {
-              // Stay num
-            } else if (itemType == 'num' && (commonType == 'int' || commonType == 'double')) {
-              commonType = 'num';
-            } else {
-              // Incompatible types
-              commonType = useObjectInsteadOfDynamic ? 'Object' : 'dynamic';
-              break;
-            }
-          }
-        }
-
-        commonType ??= useObjectInsteadOfDynamic ? 'Object' : 'dynamic';
-
-        // Apply nullability to the item type if needed
-        if (nullabilityMode == 'all' || (nullabilityMode == 'smart' && hasNull)) {
-          if (commonType != 'dynamic' && commonType != 'Object' && !commonType.endsWith('?')) {
-            commonType = '$commonType?';
-          }
-        }
-
-        baseType = 'List<$commonType>';
-      }
-    } else if (value is Map<String, dynamic>) {
-      final className = '${fieldName[0].toUpperCase()}${fieldName.substring(1)}';
-      baseType = className;
-    } else {
-      baseType = useObjectInsteadOfDynamic ? 'Object' : 'dynamic';
-    }
-
-    // Apply nullability based on mode
-    return _applyNullability(baseType, originalKey, nullabilityAnalysis, nullabilityMode);
-  }
-
-  static String _applyNullability(
-    String baseType,
-    String originalKey,
-    Map<String, bool>? nullabilityAnalysis,
-    String nullabilityMode,
-  ) {
-    if (baseType == 'dynamic' || baseType == 'Object' || baseType.endsWith('?')) {
-      return baseType;
-    }
-
-    switch (nullabilityMode) {
-      case 'all':
-        return '$baseType?';
-      case 'smart':
-        // For smart mode, check if this field should be nullable based on analysis
-        if (nullabilityAnalysis != null && nullabilityAnalysis[originalKey] == true) {
-          return '$baseType?';
-        }
-        return baseType;
-      case 'none':
-      default:
-        return baseType;
-    }
+    return CodeGeneratorOptions(
+      nullabilityMode: nullabilityMode,
+      alwaysIncludeFieldAnnotations: alwaysIncludeMappableField,
+      useObjectInsteadOfDynamic: useObjectInsteadOfDynamic,
+      includeHelperMethods: includeDefaultMethods,
+      useRequiredConstructor: useRequiredConstructor,
+      classRenames: classRenames ?? {},
+    );
   }
 }
 
