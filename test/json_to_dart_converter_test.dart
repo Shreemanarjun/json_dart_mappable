@@ -353,6 +353,43 @@ void main() {
       expect(result.code, contains('@MappableField(key: \'name\')'));
       expect(result.code, contains('factory MyModel.fromMap'));
     });
+
+    test('plain Dart generator includes equality and hashCode methods when enabled', () {
+      const jsonString = '{"name": "John", "age": 30, "active": true}';
+      final result = JsonToDartConverter.convertJsonToDart(
+        jsonString: jsonString,
+        className: 'User',
+        nullabilityMode: 'none',
+        useDartMappable: false, // Use plain Dart generator
+        includeEqualityMethods: true, // Enable equality methods
+      );
+
+      expect(result.isSuccess, true);
+      expect(result.code, contains('class User {'));
+      expect(result.code, contains('@override'));
+      expect(result.code, contains('bool operator ==(Object other)'));
+      expect(result.code, contains('int get hashCode'));
+      expect(result.code, contains('name == other.name'));
+      expect(result.code, contains('age == other.age'));
+      expect(result.code, contains('active == other.active'));
+      expect(result.code, contains('Object.hash(name, age, active)'));
+    });
+
+    test('plain Dart generator excludes equality methods by default', () {
+      const jsonString = '{"name": "John", "age": 30}';
+      final result = JsonToDartConverter.convertJsonToDart(
+        jsonString: jsonString,
+        className: 'User',
+        nullabilityMode: 'none',
+        useDartMappable: false, // Use plain Dart generator
+        includeEqualityMethods: false, // Explicitly disable equality methods
+      );
+
+      expect(result.isSuccess, true);
+      expect(result.code, contains('class User {'));
+      expect(result.code, isNot(contains('operator ==')));
+      expect(result.code, isNot(contains('hashCode')));
+    });
     test('handles smart nullability with null value and Object type with recursive types', () {
       const jsonString = '{"data":[{"age": 12},{"age": null,"name":null}]}';
       final result = JsonToDartConverter.convertJsonToDart(

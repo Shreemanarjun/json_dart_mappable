@@ -19,6 +19,7 @@ class JsonToDartConverter {
     bool useObjectInsteadOfDynamic = false,
     bool includeDefaultMethods = false,
     bool useRequiredConstructor = false,
+    bool includeEqualityMethods = false,
     Map<String, String>? classRenames,
     bool useDartMappable = true,
   }) {
@@ -38,6 +39,7 @@ class JsonToDartConverter {
         useObjectInsteadOfDynamic: useObjectInsteadOfDynamic,
         includeDefaultMethods: includeDefaultMethods,
         useRequiredConstructor: useRequiredConstructor,
+        includeEqualityMethods: includeEqualityMethods,
         classRenames: classRenames,
       );
 
@@ -69,6 +71,7 @@ class JsonToDartConverter {
     required bool useObjectInsteadOfDynamic,
     required bool includeDefaultMethods,
     required bool useRequiredConstructor,
+    required bool includeEqualityMethods,
     Map<String, String>? classRenames,
   }) {
     return CodeGeneratorOptions(
@@ -77,6 +80,7 @@ class JsonToDartConverter {
       useObjectInsteadOfDynamic: useObjectInsteadOfDynamic,
       includeHelperMethods: includeDefaultMethods,
       useRequiredConstructor: useRequiredConstructor,
+      includeEqualityMethods: includeEqualityMethods,
       classRenames: classRenames ?? {},
     );
   }

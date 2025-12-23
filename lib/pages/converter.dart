@@ -30,6 +30,7 @@ class ConverterState extends State<Converter> {
   bool _includeDefaultMethods = true; // Include fromMap, fromJson, ensureInitialized methods
   bool _useRequiredConstructor = true; // Use required constructor parameters instead of defaults
   bool _useDartMappable = true; // Use dart_mappable or plain Dart
+  bool _includeEqualityMethods = false; // Include == and hashCode methods for plain Dart
   String _renamesInput = ''; // Text input for renames
 
   void _onJsonInputChanged(String value) {
@@ -90,6 +91,7 @@ class ConverterState extends State<Converter> {
       useObjectInsteadOfDynamic: _useObjectInsteadOfDynamic,
       includeDefaultMethods: _includeDefaultMethods,
       useRequiredConstructor: _useRequiredConstructor,
+      includeEqualityMethods: _includeEqualityMethods,
       useDartMappable: _useDartMappable,
       classRenames: _parseRenames(),
     );
@@ -102,6 +104,11 @@ class ConverterState extends State<Converter> {
     });
 
     print('🎨 UI: State updated. _dartOutput length: ${_dartOutput.length}, _errorMessage: "$_errorMessage"');
+
+    // Highlight code after state update
+    if (kIsWeb && _dartOutput.isNotEmpty) {
+      Future.delayed(const Duration(milliseconds: 50), _runHighlight);
+    }
   }
 
   Map<String, String> _parseRenames() {
@@ -131,7 +138,7 @@ class ConverterState extends State<Converter> {
   void _runHighlight() {
     if (!kIsWeb) return;
     try {
-      print('🎨 UI: Running highlight.js on code blocks');
+      print('🎨 UI: Running highlight.js on code blocks and JSON input');
       final script = web.document.createElement('script') as web.HTMLScriptElement;
       script.text = '''
         (function() {
@@ -139,16 +146,59 @@ class ConverterState extends State<Converter> {
             console.log('highlight.js not loaded');
             return;
           }
-          const codeBlocks = document.querySelectorAll('pre code');
+
+          // Configure hljs globally
+          hljs.configure({
+            ignoreUnescapedHTML: true,
+            languages: ['dart', 'json']
+          });
+
+          // Highlight code blocks (Dart output)
+          const codeBlocks = document.querySelectorAll('pre code.hljs');
           console.log('Found', codeBlocks.length, 'code blocks to highlight');
           codeBlocks.forEach((block, index) => {
-            console.log('Highlighting block', index, 'with content length:', block.textContent.length);
+            console.log('Processing block', index, 'with content length:', block.textContent.length);
+
+            // Clear any existing highlighting by resetting innerHTML to text content
+            const textContent = block.textContent || '';
+            block.innerHTML = '';
+            block.textContent = textContent;
+
+            // Remove highlighting attributes
             block.removeAttribute('data-highlighted');
-            // Configure hljs to not warn about HTML-like content in code blocks
-            hljs.configure({ignoreUnescapedHTML: true});
-            hljs.highlightElement(block);
-            console.log('Block', index, 'highlighted');
+            block.className = block.className.replace(/hljs--?/g, '').trim() + ' hljs language-dart';
+
+            try {
+              // Highlight the element
+              hljs.highlightElement(block);
+              console.log('Block', index, 'highlighted successfully');
+            } catch (highlightError) {
+              console.error('Highlight error for block', index, ':', highlightError);
+              // Fallback: just set the text without highlighting
+              block.textContent = textContent;
+            }
           });
+
+          // Initialize line numbers for all code blocks
+          if (typeof hljs.initLineNumbersOnLoad !== 'undefined') {
+            console.log('Initializing highlight.js line numbers');
+            try {
+              hljs.initLineNumbersOnLoad({
+                singleLine: true
+              });
+            } catch (lineNumbersError) {
+              console.error('Line numbers initialization error:', lineNumbersError);
+            }
+          } else {
+            console.log('highlightjs-line-numbers.js not loaded');
+          }
+
+          // Highlight JSON input textarea (optional - for future use)
+          const jsonTextarea = document.getElementById('json-input-editor');
+          if (jsonTextarea && jsonTextarea.value.trim()) {
+            console.log('JSON textarea found, length:', jsonTextarea.value.length);
+            // Note: JSON textarea highlighting is handled separately if needed
+          }
         })();
       ''';
       web.document.head!.appendChild(script);
@@ -160,11 +210,6 @@ class ConverterState extends State<Converter> {
 
   @override
   Component build(BuildContext context) {
-    // Initialize highlight.js when component mounts or content changes
-    if (kIsWeb && (_dartOutput.isNotEmpty || _jsonInput.isNotEmpty)) {
-      Future.delayed(const Duration(milliseconds: 10), _runHighlight);
-    }
-
     return div(classes: 'relative min-h-screen overflow-hidden bg-slate-50 font-sans', [
       // Decorative Background Elements (Shared with Home)
       const div(classes: 'absolute top-0 left-1/2 -translate-x-1/2 w-full h-full overflow-hidden pointer-events-none z-0', [
@@ -290,6 +335,16 @@ class ConverterState extends State<Converter> {
                       _updateDartOutput();
                     }),
                   ),
+                  if (!_useDartMappable)
+                    _modernToggle(
+                      'Equality Methods',
+                      'Include == and hashCode methods',
+                      _includeEqualityMethods,
+                      (v) => setState(() {
+                        _includeEqualityMethods = v;
+                        _updateDartOutput();
+                      }),
+                    ),
                 ]),
 
                 // Mode Selection
@@ -401,9 +456,9 @@ class ConverterState extends State<Converter> {
 
                 // Code Content
                 div(classes: 'relative flex-1 group overflow-auto custom-scrollbar', [
-                  pre(classes: 'm-0 p-8 bg-transparent font-mono text-[13px] leading-[1.7] whitespace-pre overflow-visible', [
+                  pre(classes: 'm-0 p-8 bg-transparent font-mono text-[13px] leading-[1.7] whitespace-pre-wrap overflow-visible break-words', [
                     code(
-                      classes: 'hljs language-dart block !bg-transparent !p-0 !m-0 whitespace-pre text-slate-300',
+                      classes: 'hljs language-dart block !bg-transparent !p-0 !m-0 whitespace-pre-wrap text-slate-300 break-words',
                       key: ValueKey('dart-code-${_dartOutput.hashCode}'),
                       [
                         .text(_dartOutput.isEmpty ? '// Your generated Dart classes will appear here...\n// Paste some JSON to see the magic!' : _dartOutput),

@@ -62,6 +62,9 @@ class CodeGeneratorOptions {
   /// Use required constructor parameters
   final bool useRequiredConstructor;
 
+  /// Include equality and hashCode methods (for plain Dart)
+  final bool includeEqualityMethods;
+
   /// Map of class renames (original name -> new name)
   final Map<String, String> classRenames;
 
@@ -76,6 +79,7 @@ class CodeGeneratorOptions {
     this.fallbackType = FallbackType.dynamic,
     this.includeHelperMethods = false,
     this.useRequiredConstructor = false,
+    this.includeEqualityMethods = false,
     this.classRenames = const {},
     this.customOptions = const {},
   });

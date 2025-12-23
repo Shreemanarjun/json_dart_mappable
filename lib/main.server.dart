@@ -42,6 +42,7 @@ void main() {
         const script(src: 'https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/highlight.min.js'),
         const script(src: 'https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/languages/dart.min.js'),
         const script(src: 'https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/languages/json.min.js'),
+        const script(src: 'https://cdnjs.cloudflare.com/ajax/libs/highlightjs-line-numbers.js/2.9.0/highlightjs-line-numbers.min.js'),
       ],
       styles: [
         // Special import rule to include to another css file.
@@ -54,6 +55,25 @@ void main() {
           padding: .zero,
           margin: .zero,
           fontFamily: const .list([FontFamily('Inter'), FontFamilies.sansSerif]),
+        ),
+
+        // Highlight.js line numbers styles for better spacing
+        css('.hljs-ln-numbers').styles(
+          raw: {
+            'text-align': 'right',
+            'color': '#64748b',
+            'border-right': '0px solid #e2e8f0',
+            'padding-right': '12px',
+            'margin-right': '12px',
+            'user-select': 'none',
+            'width': '40px',
+            'display': 'inline-block',
+          },
+        ),
+        css('.hljs-ln-code').styles(
+          raw: {
+            'padding-left': '8px',
+          },
         ),
       ],
       body: const App(),

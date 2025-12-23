@@ -401,6 +401,43 @@ class PlainDartGenerator extends BaseDartGenerator {
     buffer.writeln('    };');
     buffer.writeln('  }');
 
+    // Generate equality and hashCode methods if requested
+    if (options.includeEqualityMethods) {
+      buffer.writeln();
+      buffer.writeln('  @override');
+      buffer.writeln('  bool operator ==(Object other) {');
+      buffer.writeln('    if (identical(this, other)) return true;');
+      buffer.writeln('    if (other is! $className) return false;');
+      buffer.writeln('    return ');
+
+      final fieldComparisons = <String>[];
+      map.forEach((key, value) {
+        final fieldName = sanitizeFieldName(key);
+        fieldComparisons.add('$fieldName == other.$fieldName');
+      });
+
+      buffer.writeln('      ${fieldComparisons.join(' &&\n      ')};');
+      buffer.writeln('  }');
+
+      buffer.writeln();
+      buffer.writeln('  @override');
+      buffer.writeln('  int get hashCode {');
+
+      final fieldNames = <String>[];
+      map.forEach((key, value) {
+        final fieldName = sanitizeFieldName(key);
+        fieldNames.add(fieldName);
+      });
+
+      if (fieldNames.length == 1) {
+        buffer.writeln('    return ${fieldNames[0]}.hashCode;');
+      } else {
+        buffer.writeln('    return Object.hash(${fieldNames.join(', ')});');
+      }
+
+      buffer.writeln('  }');
+    }
+
     buffer.writeln('}');
 
     // Add nested classes
@@ -497,6 +534,20 @@ class PlainDartGenerator extends BaseDartGenerator {
     buffer.writeln('  );');
     buffer.writeln();
     buffer.writeln('  final List<${list.isNotEmpty && list.any((item) => item is Map) ? itemClassName : 'dynamic'}> items;');
+
+    // Generate equality and hashCode methods for list classes
+    buffer.writeln();
+    buffer.writeln('  @override');
+    buffer.writeln('  bool operator ==(Object other) {');
+    buffer.writeln('    if (identical(this, other)) return true;');
+    buffer.writeln('    if (other is! $className) return false;');
+    buffer.writeln('    return items == other.items;');
+    buffer.writeln('  }');
+
+    buffer.writeln();
+    buffer.writeln('  @override');
+    buffer.writeln('  int get hashCode => items.hashCode;');
+
     buffer.writeln('}');
   }
 
